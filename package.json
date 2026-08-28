@@ -1,0 +1,98 @@
+{
+  "name": "vibe-gate-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Adversarial Quality Gate MCP for vibe-coding: IDE AI vs Critic AI, human decides on deadlock",
+  "license": "MIT",
+  "author": "Mustafa Cagri",
+  "keywords": [
+    "mcp",
+    "vibe-coding",
+    "code-review",
+    "quality-gate",
+    "cursor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mustafacagri/vibe-gate-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mustafacagri/vibe-gate-mcp/issues"
+  },
+  "homepage": "https://github.com/mustafacagri/vibe-gate-mcp#readme",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "vibe-gate-mcp": "dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "rules.json",
+    "schemas",
+    "examples",
+    ".env.example",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/INSTALLATION.md",
+    "docs/USAGE.md",
+    "docs/SEMANTIC_DIFF_PAYLOAD.md",
+    "docs/TROUBLESHOOTING.md",
+    "docs/VIBE-GATE.md",
+    "docs/project/VARIABLES.md",
+    "docs/project/api/mcp-tools.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "packageManager": "yarn@4.18.0",
+  "scripts": {
+    "prepare": "node scripts/prepare-husky.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.mjs",
+    "build": "tsdown",
+    "prepack": "tsdown",
+    "prepublishOnly": "tsc --noEmit && eslint . && vitest run",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:tools": "tsx scripts/test-tools.ts",
+    "test:integration": "tsx scripts/test-integration.ts",
+    "test:mcp": "tsx scripts/test-mcp-real.ts",
+    "smoke:semantic-diff-path": "tsx scripts/smoke-semantic-diff-path.ts",
+    "smoke:files": "tsx scripts/smoke-files.ts",
+    "pack:check": "npm pack --dry-run"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,json,md,yml,yaml}": "prettier --write",
+    "*.{ts,tsx,js,jsx,mjs}": "eslint --fix"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "@google/genai": "^2.19.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "dotenv": "^17.4.2",
+    "openai": "^7.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "eslint": "^10.9.1",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "globals": "^17.11.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
+    "prettier": "^3.9.6",
+    "tsdown": "^0.22.14",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vibe-gate": {
+      "command": "npx",
+      "args": ["-y", "vibe-gate-mcp"],
+      "env": {
+        "VIBE_WORKSPACE_ROOT": "${workspaceFolder}",
+        "CRITIC_PROVIDER": "openai",
+        "OPENAI_API_KEY": "YOUR_OPENAI_API_KEY"
+      }
+    }
+  }
+}

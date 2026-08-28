@@ -1,0 +1,17 @@
+.cursor/mcp.json
+node_modules
+dist
+.env
+.env.local
+.env.*
+!.env.example
+*.log
+.DS_Store
+.pnp.*
+.vibe/
+.yarn/
+.yarn-global/
+.pnpm-store/
+.vibe-*-test/
+coverage/
+*.tgz

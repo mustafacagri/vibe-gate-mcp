@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vibe-Gate Rules",
+  "type": "object",
+  "required": ["hardRules", "softRules"],
+  "properties": {
+    "hardRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "category"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+          "description": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["security", "architecture", "data-integrity"]
+          }
+        }
+      }
+    },
+    "softRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "category"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+          "description": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["style", "refactoring", "performance"]
+          }
+        }
+      }
+    }
+  }
+}

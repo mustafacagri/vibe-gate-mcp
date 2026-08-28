@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*.ts"],
+      "@/tools": ["./src/tools/index.ts"],
+      "@/llm": ["./src/llm/index.ts"],
+      "@/prompts": ["./src/prompts/index.ts"],
+      "@/personas": ["./src/personas/index.ts"],
+      "@/roadmap": ["./src/roadmap/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

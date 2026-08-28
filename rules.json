@@ -1,0 +1,42 @@
+{
+  "$schema": "./schemas/rules.schema.json",
+  "hardRules": [
+    {
+      "id": "SEC-001",
+      "description": "Raw SQL/NoSQL queries with injection risk are forbidden",
+      "category": "security"
+    },
+    {
+      "id": "SEC-002",
+      "description": "API keys, secrets, or credentials must not be hardcoded",
+      "category": "security"
+    },
+    {
+      "id": "ARCH-001",
+      "description": "Framework/state lib must match project blueprint",
+      "category": "architecture"
+    },
+    {
+      "id": "DATA-001",
+      "description": "Transaction/schema changes that break data integrity are forbidden",
+      "category": "data-integrity"
+    }
+  ],
+  "softRules": [
+    {
+      "id": "STYLE-001",
+      "description": "Naming conventions (camelCase, PascalCase, etc.)",
+      "category": "style"
+    },
+    {
+      "id": "REFACTOR-001",
+      "description": "Code duplication (DRY) violations",
+      "category": "refactoring"
+    },
+    {
+      "id": "PERF-001",
+      "description": "Bundle size or runtime performance improvements",
+      "category": "performance"
+    }
+  ]
+}

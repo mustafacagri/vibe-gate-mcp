@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "vibe-gate": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/vibe-gate-mcp/dist/index.mjs"],
+      "cwd": "/ABSOLUTE/PATH/TO/vibe-gate-mcp",
+      "env": {
+        "VIBE_WORKSPACE_ROOT": "${workspaceFolder}",
+        "CRITIC_PROVIDER": "opencode",
+        "CRITIC_MODEL": "minimax-m3",
+        "OPENCODE_API_KEY": "YOUR_OPENCODE_API_KEY",
+        "OPENCODE_PLAN": "go"
+      }
+    }
+  }
+}
