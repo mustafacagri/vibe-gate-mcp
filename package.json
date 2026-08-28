@@ -23,9 +23,7 @@
   "engines": {
     "node": ">=24"
   },
-  "bin": {
-    "vibe-gate-mcp": "dist/index.mjs"
-  },
+  "bin": "dist/index.mjs",
   "files": [
     "dist",
     "rules.json",

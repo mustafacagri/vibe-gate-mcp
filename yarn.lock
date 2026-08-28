@@ -3883,7 +3883,7 @@ __metadata:
     vitest: "npm:^4.1.11"
     zod: "npm:^4.4.3"
   bin:
-    vibe-gate-mcp: ./dist/index.mjs
+    vibe-gate-mcp: dist/index.mjs
   languageName: unknown
   linkType: soft
 
