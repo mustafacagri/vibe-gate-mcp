@@ -454,7 +454,7 @@ export function filterConcernsBySemanticDiff(concerns: Concern[], semanticDiff: 
       return true
     }
 
-    const matchingFile = providedFiles.find(pf => citedFile.includes(pf.filePath) || pf.filePath.includes(citedFile))
+    const matchingFile = providedFiles.find(pf => pathsMatch(citedFile, pf.filePath))
     debugLog(
       `[DEBUG] filterConcernsBySemanticDiff: matchingFile: ${matchingFile ? matchingFile.filePath : 'NOT FOUND'}`
     )
@@ -545,10 +545,37 @@ export function extractFileInfosFromSemanticDiff(semanticDiff: string): FileInfo
   return files
 }
 
+function normalizePath(pathStr: string): string {
+  return pathStr.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '').trim()
+}
+
+function pathsMatch(citedFile: string, providedFile: string): boolean {
+  const nCited = normalizePath(citedFile)
+  const nProvided = normalizePath(providedFile)
+  if (!nCited || !nProvided) return false
+
+  return nCited === nProvided || nProvided.endsWith('/' + nCited) || nCited.endsWith('/' + nProvided)
+}
+
 function extractFileFromEvidence(evidence: string): string | null {
-  const colonIdx = evidence.indexOf(':')
-  if (colonIdx > 0) return evidence.slice(0, colonIdx).trim()
-  const parenOpen = evidence.indexOf('(')
-  if (parenOpen > 0) return evidence.slice(0, parenOpen).trim()
+  let fileCandidate = evidence.trim()
+  const arrowIdx = fileCandidate.indexOf('→')
+  if (arrowIdx > 0) fileCandidate = fileCandidate.slice(0, arrowIdx).trim()
+
+  const colonIdx = fileCandidate.indexOf(':')
+  if (colonIdx > 0) return fileCandidate.slice(0, colonIdx).trim()
+
+  const parenOpen = fileCandidate.indexOf('(')
+  if (parenOpen > 0) return fileCandidate.slice(0, parenOpen).trim()
+
+  if (fileCandidate.length > 0 && !fileCandidate.includes(' ')) {
+    return fileCandidate
+  }
+
+  const firstToken = fileCandidate.split(/\s+/)[0]
+  if (firstToken && (firstToken.includes('/') || firstToken.includes('.'))) {
+    return firstToken
+  }
+
   return null
 }

@@ -9,7 +9,8 @@ import {
   parseRequestsFromResponse,
   hasConcernBlocks,
   hasVerificationBlocks,
-  hasRequestBlocks
+  hasRequestBlocks,
+  filterConcernsBySemanticDiff
 } from '@/utils/criticResponseParser'
 import { SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 
@@ -329,6 +330,113 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+  })
+
+  describe('filterConcernsBySemanticDiff', () => {
+    const semanticDiff = `FILE: src/utils/helper.ts
+CONTENT:
+function processData() {
+  const result = 42
+  return result
+}
+export function getStatus() {
+  return 'active'
+}
+
+FILE: src/components/Button.tsx
+CONTENT:
+export function Button() {
+  return <button>Click</button>
+}`
+
+    it('returns empty array if input concerns array is empty', () => {
+      expect(filterConcernsBySemanticDiff([], semanticDiff)).toEqual([])
+    })
+
+    it('returns original concerns if semanticDiff is empty', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicate code',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:2',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(filterConcernsBySemanticDiff(concerns, '')).toEqual(concerns)
+    })
+
+    it('filters out concerns citing files NOT in semanticDiff (hallucinated files)', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicate code result in processData',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:1-4',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        },
+        {
+          ruleId: 'SEC-01',
+          description: 'Unsafe operation in auth.ts',
+          severity: SEVERITY.CRITICAL,
+          evidence: 'src/services/auth.ts:15-20',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].ruleId).toBe('DRY-01')
+    })
+
+    it('keeps concerns citing valid files with matching line numbers and description', () => {
+      const concerns = [
+        {
+          ruleId: 'MAGIC-01',
+          description: 'Magic number 42 result in processData',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:1-3',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].ruleId).toBe('MAGIC-01')
+    })
+
+    it('rejects concern if cited line numbers exceed file total lines in semanticDiff', () => {
+      const concerns = [
+        {
+          ruleId: 'MAGIC-01',
+          description: 'Magic number 42 result in processData',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:999',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('handles relative path matching and normalizePath properly', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Magic string active in getStatus function',
+          severity: SEVERITY.WARNING,
+          evidence: 'helper.ts:5-7',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].ruleId).toBe('DRY-01')
     })
   })
 })
