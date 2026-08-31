@@ -43,6 +43,4 @@ export function loadEnvironmentVariables(packageRoot: string): void {
     dotenvConfig({ path: packageEnvPath, override: false, quiet: true })
     debugLog('Loaded package .env')
   }
-
-  debugLog(`Env check after load -> CRITIC_PROVIDER: ${process.env.CRITIC_PROVIDER || 'none'}`)
 }
