@@ -17,6 +17,7 @@ import {
   resolveOpenCodeEndpoint
 } from '@/llm/opencode-endpoint'
 import type { LLMMessage, LLMResponse } from '@/llm/types'
+import { splitMessages } from '@/llm/utils'
 
 const ROLE_MAP = {
   user: 'user',
@@ -29,27 +30,6 @@ const GEMINI_ROLE_MAP = {
   assistant: 'model',
   system: 'user'
 } as const
-
-function splitMessages(messages: LLMMessage[]): {
-  system: string | undefined
-  chat: Array<{ role: 'user' | 'assistant'; content: string }>
-} {
-  const systemParts: string[] = []
-  const chat: Array<{ role: 'user' | 'assistant'; content: string }> = []
-
-  for (const m of messages) {
-    if (m.role === 'system') {
-      systemParts.push(m.content)
-    } else {
-      chat.push({ role: m.role, content: m.content })
-    }
-  }
-
-  return {
-    system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
-    chat
-  }
-}
 
 function toRoleContentMessages(messages: LLMMessage[]): Array<{ role: string; content: string }> {
   return messages.map(m => ({

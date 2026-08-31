@@ -6,29 +6,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { LLM_MAX_TOKENS } from '@/constants'
 import type { LLMMessage, LLMResponse } from '@/llm/types'
+import { splitMessages } from '@/llm/utils'
 
 const MINIMAX_BASE_URL = 'https://api.minimax.io/anthropic'
-
-function splitMessages(messages: LLMMessage[]): {
-  system: string | undefined
-  chat: Array<{ role: 'user' | 'assistant'; content: string }>
-} {
-  const systemParts: string[] = []
-  const chat: Array<{ role: 'user' | 'assistant'; content: string }> = []
-
-  for (const m of messages) {
-    if (m.role === 'system') {
-      systemParts.push(m.content)
-    } else {
-      chat.push({ role: m.role, content: m.content })
-    }
-  }
-
-  return {
-    system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
-    chat
-  }
-}
 
 export function createMiniMaxProvider(apiKey: string, model: string) {
   const client = new Anthropic({ apiKey, baseURL: MINIMAX_BASE_URL })
