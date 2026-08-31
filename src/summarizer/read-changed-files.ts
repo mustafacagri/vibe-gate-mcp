@@ -187,7 +187,8 @@ async function addFileToContents(
   fileContentMap: Map<string, string>,
   totalTokens: { value: number },
   maxTokens: number,
-  allowFullRead: boolean = false
+  allowFullRead: boolean = false,
+  preFetchedContent?: FileContent
 ): Promise<boolean> {
   const baseLines = CONTEXT_LIMITS.MAX_LINES_PER_FILE
 
@@ -196,12 +197,14 @@ async function addFileToContents(
   const filePath = parts[0]
   const lineRange = parts[1]
 
-  const fileContent = await readChangedFileContent(workspaceRoot, filePath, baseLines, lineRange)
+  const fileContent = preFetchedContent ?? (await readChangedFileContent(workspaceRoot, filePath, baseLines, lineRange))
   const fileTokens = estimateTokens(fileContent.content)
   const remainingBudget = maxTokens - totalTokens.value
 
   if (allowFullRead && !lineRange && fileTokens <= remainingBudget) {
-    const fullContent = await readChangedFileContent(workspaceRoot, filePath, Number.MAX_SAFE_INTEGER)
+    const fullContent = fileContent.truncated
+      ? await readChangedFileContent(workspaceRoot, filePath, Number.MAX_SAFE_INTEGER)
+      : fileContent
     fileContentMap.set(file, fullContent.content)
     contents.push(fullContent)
     totalTokens.value += estimateTokens(fullContent.content)
@@ -234,15 +237,16 @@ async function addExpandedFileToContents(
   expandedFile: string,
   contents: FileContent[],
   totalTokens: { value: number },
-  maxTokens: number
+  maxTokens: number,
+  preFetchedContent?: FileContent
 ): Promise<boolean> {
   if (totalTokens.value >= maxTokens) return true
 
-  const expandedContent = await readChangedFileContent(
+  const expandedContent = preFetchedContent ?? (await readChangedFileContent(
     workspaceRoot,
     expandedFile,
     CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK
-  )
+  ))
   const expandedTokens = estimateTokens(expandedContent.content)
   if (totalTokens.value + expandedTokens <= maxTokens) {
     contents.push(expandedContent)
@@ -263,8 +267,20 @@ export async function readChangedFilesWithBudget(
   const totalTokens = { value: 0 }
   let budgetExceeded = false
 
-  for (const file of filesChanged) {
-    if (await addFileToContents(workspaceRoot, file, contents, fileContentMap, totalTokens, maxTokens, true)) {
+  const baseLines = CONTEXT_LIMITS.MAX_LINES_PER_FILE
+  const preFetchedContents = await Promise.all(
+    filesChanged.map(file => {
+      const parts = file.split(':')
+      const filePath = parts[0]
+      const lineRange = parts[1]
+      return readChangedFileContent(workspaceRoot, filePath, baseLines, lineRange)
+    })
+  )
+
+  for (let i = 0; i < filesChanged.length; i++) {
+    const file = filesChanged[i]
+    const preFetched = preFetchedContents[i]
+    if (await addFileToContents(workspaceRoot, file, contents, fileContentMap, totalTokens, maxTokens, true, preFetched)) {
       budgetExceeded = true
       break
     }
@@ -273,12 +289,20 @@ export async function readChangedFilesWithBudget(
   let expandedFiles: string[] = []
   if (expandImports_) {
     expandedFiles = await expandImports(workspaceRoot, filesChanged, fileContentMap)
-    for (const expandedFile of expandedFiles) {
+    const expandedPreFetched = await Promise.all(
+      expandedFiles.map(expandedFile =>
+        readChangedFileContent(workspaceRoot, expandedFile, CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK)
+      )
+    )
+
+    for (let i = 0; i < expandedFiles.length; i++) {
+      const expandedFile = expandedFiles[i]
       if (totalTokens.value >= maxTokens) {
         budgetExceeded = true
         break
       }
-      if (await addExpandedFileToContents(workspaceRoot, expandedFile, contents, totalTokens, maxTokens)) {
+      const preFetched = expandedPreFetched[i]
+      if (await addExpandedFileToContents(workspaceRoot, expandedFile, contents, totalTokens, maxTokens, preFetched)) {
         budgetExceeded = true
         break
       }
