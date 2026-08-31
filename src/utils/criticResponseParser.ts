@@ -303,11 +303,21 @@ export function isNoneRemaining(response: string): boolean {
 }
 
 function extractLineRangeFromEvidence(evidence: string): { start: number; end: number } | null {
+  let after = ''
   const colonIdx = evidence.indexOf(':')
-  if (colonIdx < 0) return null
+  if (colonIdx >= 0) {
+    after = evidence.slice(colonIdx + 1).trim()
+  } else {
+    const parenOpen = evidence.indexOf('(')
+    const parenClose = evidence.lastIndexOf(')')
+    if (parenOpen >= 0 && parenClose > parenOpen) {
+      after = evidence.slice(parenOpen + 1, parenClose).trim()
+    }
+  }
 
-  const afterColon = evidence.slice(colonIdx + 1)
-  const rangeMatch = /^(\d+)(?:-(\d+))?/.exec(afterColon)
+  if (!after) return null
+
+  const rangeMatch = /(\d+)(?:\s*-\s*(\d+))?/.exec(after)
   if (!rangeMatch) return null
 
   const start = parseInt(rangeMatch[1], 10)
@@ -327,6 +337,13 @@ function validateLineNumbers(fileInfo: FileInfo | undefined, evidence: string): 
 
   const lineRange = extractLineRangeFromEvidence(evidence)
   if (!lineRange) return true
+
+  if (lineRange.start < 1 || lineRange.end < lineRange.start) {
+    debugLog(
+      `[DEBUG] validateLineNumbers: REJECTING - invalid line range ${lineRange.start}-${lineRange.end}`
+    )
+    return false
+  }
 
   if (lineRange.start > fileInfo.totalLines) {
     debugLog(

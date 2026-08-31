@@ -9,7 +9,8 @@ import {
   parseRequestsFromResponse,
   hasConcernBlocks,
   hasVerificationBlocks,
-  hasRequestBlocks
+  hasRequestBlocks,
+  filterConcernsBySemanticDiff
 } from '@/utils/criticResponseParser'
 import { SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 
@@ -329,6 +330,100 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+  })
+
+  describe('filterConcernsBySemanticDiff', () => {
+    const sampleDiff = `FILE: src/utils/helper.ts
+CONTENT:
+import { useState } from 'react'
+
+export function helperFunction(val: number) {
+  const result = val * 2
+  return result
+}
+
+export function secondHelper(str: string) {
+  return str.toLowerCase().trim()
+}
+`
+
+    it('keeps concern when file and line numbers exist and content matches keywords', () => {
+      const concerns = [
+        {
+          ruleId: 'COMPLEX-01',
+          description: 'helperFunction is too simple',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:3-6',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, sampleDiff)
+      expect(filtered).toHaveLength(1)
+    })
+
+    it('rejects concern when cited line range exceeds file total lines', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicated logic in helperFunction',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:20-25',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, sampleDiff)
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('rejects concern when cited file is not in semanticDiff', () => {
+      const concerns = [
+        {
+          ruleId: 'SEC-01',
+          description: 'SQL injection hazard in user query',
+          severity: SEVERITY.CRITICAL,
+          evidence: 'src/db/userQuery.ts:5-10',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, sampleDiff)
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('rejects concern when cited identifier is missing in content', () => {
+      const concerns = [
+        {
+          ruleId: 'MAGIC-01',
+          description: 'Magic string in nonExistentFunction',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:8-10',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const filtered = filterConcernsBySemanticDiff(concerns, sampleDiff)
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('returns empty array if input concerns is empty', () => {
+      expect(filterConcernsBySemanticDiff([], sampleDiff)).toEqual([])
+    })
+
+    it('keeps all concerns if semanticDiff is empty', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Some concern',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:1-2',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(filterConcernsBySemanticDiff(concerns, '')).toEqual(concerns)
     })
   })
 })
