@@ -149,21 +149,23 @@ async function readSourceFileContent(
   return { ok: true, content }
 }
 
-type ProcessSourceFileResult =
-  | { ok: true; relativePath: string; size: number; content: string }
+type StatCheckResult =
+  | { ok: true; relativePath: string; absolutePath: string; size: number }
   | { ok: false; result: BuildSemanticDiffFromFilesResult }
 
-async function processSourceFile(workspaceRoot: string, relativePath: string): Promise<ProcessSourceFileResult> {
+async function checkSourceFileStat(workspaceRoot: string, relativePath: string): Promise<StatCheckResult> {
   const pathResult = resolveSafePathInWorkspace(workspaceRoot, relativePath, WORKSPACE_PATH_KIND.SOURCE_FILE)
   if (!pathResult.ok) return { ok: false, result: mapPathError(pathResult.code, pathResult.message) }
 
   const sizeCheck = await assertReadableSourceFile(workspaceRoot, relativePath, pathResult.absolutePath)
   if (!sizeCheck.ok) return sizeCheck
 
-  const read = await readSourceFileContent(pathResult.absolutePath, relativePath)
-  if (!read.ok) return read
-
-  return { ok: true, relativePath, size: sizeCheck.size, content: read.content }
+  return {
+    ok: true,
+    relativePath,
+    absolutePath: pathResult.absolutePath,
+    size: sizeCheck.size
+  }
 }
 
 export async function buildSemanticDiffFromSourceFiles(
@@ -174,13 +176,13 @@ export async function buildSemanticDiffFromSourceFiles(
   const arrayError = validateFilesArray(paths)
   if (arrayError) return arrayError
 
-  const fileResults = await Promise.all(paths.map(relativePath => processSourceFile(workspaceRoot, relativePath)))
+  // Phase 1: Check paths, stat files, verify canonical paths, and validate total size limit BEFORE reading any content
+  const statResults = await Promise.all(paths.map(relativePath => checkSourceFileStat(workspaceRoot, relativePath)))
 
-  const blocks: string[] = []
-  const filesLoaded: string[] = []
   let totalBytes = 0
+  const validFiles: Array<{ relativePath: string; absolutePath: string }> = []
 
-  for (const item of fileResults) {
+  for (const item of statResults) {
     if (!item.ok) return item.result
 
     totalBytes += item.size
@@ -192,8 +194,22 @@ export async function buildSemanticDiffFromSourceFiles(
       }
     }
 
-    blocks.push(formatFileBlock(item.relativePath, item.content))
-    filesLoaded.push(item.relativePath)
+    validFiles.push({ relativePath: item.relativePath, absolutePath: item.absolutePath })
+  }
+
+  // Phase 2: Read file contents concurrently ONLY after total size limit and all file checks pass
+  const readResults = await Promise.all(validFiles.map(f => readSourceFileContent(f.absolutePath, f.relativePath)))
+
+  const blocks: string[] = []
+  const filesLoaded: string[] = []
+
+  for (let i = 0; i < readResults.length; i++) {
+    const read = readResults[i]
+    if (!read.ok) return read.result
+
+    const file = validFiles[i]
+    blocks.push(formatFileBlock(file.relativePath, read.content))
+    filesLoaded.push(file.relativePath)
   }
 
   return {
