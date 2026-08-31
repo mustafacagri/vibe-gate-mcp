@@ -399,8 +399,7 @@ REQUEST: src/file2.ts`
           reviewStatus: CONCERN_REVIEW_STATUS.PENDING
         }
       ]
-      const diff =
-        'FILE: src/index.ts\nCONTENT:\nfunction calculateTotal() {\n  return duplicate + calculation;\n}\n'
+      const diff = 'FILE: src/index.ts\nCONTENT:\nfunction calculateTotal() {\n  return duplicate + calculation;\n}\n'
       const result = filterConcernsBySemanticDiff(concerns, diff)
       expect(result).toHaveLength(1)
       expect(result[0].ruleId).toBe('DRY-01')

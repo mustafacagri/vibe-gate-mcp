@@ -429,9 +429,7 @@ function isConcernValidAgainstDiff(c: Concern, providedFiles: FileInfo[]): boole
   }
 
   const matchingFile = providedFiles.find(pf => citedFile.includes(pf.filePath) || pf.filePath.includes(citedFile))
-  debugLog(
-    `[DEBUG] filterConcernsBySemanticDiff: matchingFile: ${matchingFile ? matchingFile.filePath : 'NOT FOUND'}`
-  )
+  debugLog(`[DEBUG] filterConcernsBySemanticDiff: matchingFile: ${matchingFile ? matchingFile.filePath : 'NOT FOUND'}`)
 
   if (!matchingFile) {
     debugLog(
