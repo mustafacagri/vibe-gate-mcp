@@ -11,17 +11,44 @@ function matchesPattern(pathLower: string, patterns: readonly string[]): boolean
   return patterns.some(p => pathLower.includes(p))
 }
 
-async function findMatchingFiles(root: string, dir: string, patterns: readonly string[], acc: string[]): Promise<void> {
+function processFileEntry(rel: string, authFiles: string[], dbFiles: string[], apiFiles: string[]): void {
+  const lower = rel.toLowerCase()
+  if (matchesPattern(lower, CRITICAL_PATTERNS.AUTH)) {
+    authFiles.push(rel)
+  }
+  if (matchesPattern(lower, CRITICAL_PATTERNS.DB)) {
+    dbFiles.push(rel)
+  }
+  if (matchesPattern(lower, CRITICAL_PATTERNS.API)) {
+    apiFiles.push(rel)
+  }
+}
+
+async function scanWorkspace(
+  root: string,
+  dir: string,
+  authFiles: string[],
+  dbFiles: string[],
+  apiFiles: string[]
+): Promise<void> {
   const fullPath = join(root, dir)
   try {
     const entries = await readdir(fullPath, { withFileTypes: true })
+    const subDirPromises: Promise<void>[] = []
+
     for (const e of entries) {
       const rel = dir ? `${dir}/${e.name}` : e.name
       if (e.isDirectory()) {
-        if (!SCAN_IGNORE_SET.has(e.name)) await findMatchingFiles(root, rel, patterns, acc)
-      } else if (e.isFile() && matchesPattern(rel.toLowerCase(), patterns)) {
-        acc.push(rel)
+        if (!SCAN_IGNORE_SET.has(e.name)) {
+          subDirPromises.push(scanWorkspace(root, rel, authFiles, dbFiles, apiFiles))
+        }
+      } else if (e.isFile()) {
+        processFileEntry(rel, authFiles, dbFiles, apiFiles)
       }
+    }
+
+    if (subDirPromises.length > 0) {
+      await Promise.all(subDirPromises)
     }
   } catch {
     // ignore
@@ -33,9 +60,7 @@ export async function extractCriticalSnippets(workspaceRoot: string): Promise<Cr
   const dbFiles: string[] = []
   const apiFiles: string[] = []
 
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.AUTH, authFiles)
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.DB, dbFiles)
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.API, apiFiles)
+  await scanWorkspace(workspaceRoot, '', authFiles, dbFiles, apiFiles)
 
   const format = (paths: string[]): string[] => paths.slice(0, MAX_CRITICAL_FILES_PER_CATEGORY)
 
