@@ -331,4 +331,33 @@ REQUEST: src/file2.ts`
       expect(requests[1].filePath).toBe('src/file2.ts')
     })
   })
+
+  describe('ReDoS and performance safeguards', () => {
+    it('skips parsing lines exceeding MAX_PARSER_LINE_LENGTH in parseConcernsFromResponse', () => {
+      const longLine = 'CONCERN: SEC-01 | ' + 'a'.repeat(100_000) + ' | EVIDENCE: file.ts:1'
+      const start = performance.now()
+      const concerns = parseConcernsFromResponse(longLine)
+      const duration = performance.now() - start
+      expect(concerns).toHaveLength(0)
+      expect(duration).toBeLessThan(100)
+    })
+
+    it('skips parsing lines exceeding MAX_PARSER_LINE_LENGTH in parseRequestsFromResponse', () => {
+      const longLine = 'REQUEST: ' + 'a'.repeat(100_000)
+      const start = performance.now()
+      const requests = parseRequestsFromResponse(longLine)
+      const duration = performance.now() - start
+      expect(requests).toHaveLength(0)
+      expect(duration).toBeLessThan(100)
+    })
+
+    it('skips parsing lines exceeding MAX_PARSER_LINE_LENGTH in parseVerificationsFromResponse', () => {
+      const longLine = 'VERIFIED: ' + 'a'.repeat(100_000) + ' → Fixed'
+      const start = performance.now()
+      const verifications = parseVerificationsFromResponse(longLine, [])
+      const duration = performance.now() - start
+      expect(verifications).toHaveLength(0)
+      expect(duration).toBeLessThan(100)
+    })
+  })
 })
