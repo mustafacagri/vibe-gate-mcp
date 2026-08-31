@@ -1,17 +1,20 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { extractCriticalSnippets } from '@/summarizer/extract-critical-snippets'
 
-const testDir = join(process.cwd(), '.vibe-extract-snippets-test')
-
 describe('extractCriticalSnippets', () => {
+  let testDir: string
+
   beforeEach(async () => {
-    await mkdir(testDir, { recursive: true })
+    testDir = await mkdtemp(join(tmpdir(), 'vibe-extract-snippets-test-'))
   })
 
   afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true })
+    if (testDir) {
+      await rm(testDir, { recursive: true, force: true })
+    }
   })
 
   it('categorizes matching files for Auth, DB, and API patterns', async () => {
