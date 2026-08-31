@@ -59,7 +59,7 @@ import { computeSemanticDiffLineHints } from '@/utils/semantic-diff-line-hints'
 import { getWorkspaceRoot } from '@/workspace'
 import { debugLog } from '@/utils/debug'
 import type { LLMMessage } from '@/llm/types'
-import type { ReviewRound, ReviewSession } from '@/conflict-loop/types'
+import type { Concern, ReviewRound, ReviewSession } from '@/conflict-loop/types'
 
 type VerdictId = (typeof CRITIC_VERDICTS)[keyof typeof CRITIC_VERDICTS]
 
