@@ -3,7 +3,7 @@
  * Validates against schema; returns defaults on parse/validation failure.
  */
 
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { PATHS, RULE_ID_REGEX, RULE_CATEGORIES } from '@/constants'
@@ -36,9 +36,15 @@ const DEFAULT_RULES: RulesConfig = {
   softRules: []
 }
 
+const MAX_RULES_FILE_BYTES = 1 * 1024 * 1024
+
 export async function loadRules(workspaceRoot: string): Promise<RulesConfig> {
   const path = join(workspaceRoot, PATHS.RULES_JSON)
   try {
+    const st = await stat(path)
+    if (st.size > MAX_RULES_FILE_BYTES) {
+      return DEFAULT_RULES
+    }
     const raw = await readFile(path, 'utf-8')
     const parsed: unknown = JSON.parse(raw)
     const result = rulesConfigSchema.safeParse(parsed)
