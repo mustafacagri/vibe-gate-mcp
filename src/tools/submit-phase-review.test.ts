@@ -3,8 +3,57 @@
  * Tests the complete flow from LLM response string to parsed structure.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseConcernsFromResponse, parseVerificationsFromResponse } from '@/utils/criticResponseParser'
+import { handleSubmitPhaseReview } from '@/tools/submit-phase-review'
+import { createLLMProvider } from '@/llm'
+import { readSession } from '@/conflict-loop/session'
+
+vi.mock('@/llm', () => ({
+  createLLMProvider: vi.fn()
+}))
+
+vi.mock('@/conflict-loop/session', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/conflict-loop/session')>()
+  return {
+    ...actual,
+    readSession: vi.fn(),
+    writeSession: vi.fn().mockResolvedValue(undefined),
+    clearSession: vi.fn().mockResolvedValue(undefined)
+  }
+})
+
+vi.mock('@/workspace', () => ({
+  getWorkspaceRoot: () => '/workspace'
+}))
+
+vi.mock('@/roadmap', () => ({
+  getStatus: vi.fn().mockResolvedValue({ currentPhase: '1.1.1' }),
+  updatePhaseOnAccept: vi.fn().mockResolvedValue(undefined),
+  updateConflictCount: vi.fn().mockResolvedValue(undefined)
+}))
+
+vi.mock('@/config', () => ({
+  loadConfig: vi.fn().mockReturnValue({ criticPersona: 'default' }),
+  getEffectiveModel: vi.fn().mockReturnValue('mock-model')
+}))
+
+vi.mock('@/rules/loader', () => ({
+  loadRules: vi.fn().mockResolvedValue([]),
+  formatRulesForPrompt: vi.fn().mockReturnValue('')
+}))
+
+vi.mock('@/preferences/index', () => ({
+  readPreferencesLog: vi.fn().mockResolvedValue('')
+}))
+
+vi.mock('@/summarizer/extract-project-blueprint', () => ({
+  extractProjectBlueprint: vi.fn().mockResolvedValue({ framework: 'Node.js', structures: [] })
+}))
+
+vi.mock('@/summarizer/parse-dependency-list', () => ({
+  parseDependencyListFromPackageJson: vi.fn().mockResolvedValue({ dependencies: [], devDependencies: [] })
+}))
 import { buildCriticResponse } from '@/utils/responseBuilder'
 import { CRITIC_VERDICTS, SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 import type { Concern } from '@/conflict-loop/types'
@@ -298,6 +347,108 @@ FIX REQUIRED: Extract to utility`
 
       expect(concerns).toHaveLength(1)
       expect(concerns[0].severity).toBe(SEVERITY.WARNING)
+    })
+  })
+
+  describe('Empty priorConcerns must NEVER vacuous-ACCEPT a Critic REJECT', () => {
+    it('Round 1 REJECT with empty priorConcerns returns REJECT (never vacuous-ACCEPT)', async () => {
+      vi.mocked(readSession).mockResolvedValue(null)
+      vi.mocked(createLLMProvider).mockReturnValue({
+        complete: vi.fn().mockResolvedValue({
+          content: `VERDICT: REJECT
+
+CONCERN: DRY-01 | Code duplication
+SEVERITY: BLOCKING
+LOCATION:
+  - src/a.ts (line 10)
+FIX REQUIRED: Refactor duplicate code`,
+          usage: { promptTokens: 100, completionTokens: 50 }
+        })
+      })
+
+      const res = await handleSubmitPhaseReview({
+        phaseId: 'p1',
+        report: 'src/a.ts:10 updated',
+        semanticDiff: 'FILE: src/a.ts\nCONTENT:\nconst x = 1\n',
+        round: 1
+      })
+
+      const body = JSON.parse(res.content[0].text) as { verdict: string }
+      expect(body.verdict).toBe(CRITIC_VERDICTS.REJECT)
+    })
+
+    it('Round 2 REJECT with resolved priorConcerns promotes to ACCEPT', async () => {
+      vi.mocked(readSession).mockResolvedValue({
+        phaseId: 'p1',
+        round: 1,
+        concerns: [
+          {
+            ruleId: 'DRY-01',
+            description: 'Code duplication',
+            severity: SEVERITY.BLOCKING,
+            evidence: 'src/a.ts:10',
+            verified: false,
+            reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+          }
+        ],
+        history: []
+      })
+
+      vi.mocked(createLLMProvider).mockReturnValue({
+        complete: vi.fn().mockResolvedValue({
+          content: `VERDICT: REJECT
+
+VERIFIED: src/a.ts → Fixed DRY-01 issue`,
+          usage: { promptTokens: 100, completionTokens: 50 }
+        })
+      })
+
+      const res = await handleSubmitPhaseReview({
+        phaseId: 'p1',
+        report: 'src/a.ts:10 refactored',
+        semanticDiff: 'FILE: src/a.ts\nCONTENT:\nconst x = 2\n',
+        round: 2
+      })
+
+      const body = JSON.parse(res.content[0].text) as { verdict: string }
+      expect(body.verdict).toBe(CRITIC_VERDICTS.ACCEPT)
+    })
+
+    it('Round 2 REJECT with unresolved priorConcerns stays REJECT', async () => {
+      vi.mocked(readSession).mockResolvedValue({
+        phaseId: 'p1',
+        round: 1,
+        concerns: [
+          {
+            ruleId: 'DRY-01',
+            description: 'Code duplication',
+            severity: SEVERITY.BLOCKING,
+            evidence: 'src/a.ts:10',
+            verified: false,
+            reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+          }
+        ],
+        history: []
+      })
+
+      vi.mocked(createLLMProvider).mockReturnValue({
+        complete: vi.fn().mockResolvedValue({
+          content: `VERDICT: REJECT
+
+NOT_VERIFIED: src/a.ts → Duplication still present`,
+          usage: { promptTokens: 100, completionTokens: 50 }
+        })
+      })
+
+      const res = await handleSubmitPhaseReview({
+        phaseId: 'p1',
+        report: 'src/a.ts:10 attempted fix',
+        semanticDiff: 'FILE: src/a.ts\nCONTENT:\nconst x = 3\n',
+        round: 2
+      })
+
+      const body = JSON.parse(res.content[0].text) as { verdict: string }
+      expect(body.verdict).toBe(CRITIC_VERDICTS.REJECT)
     })
   })
 })

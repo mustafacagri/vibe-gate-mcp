@@ -490,12 +490,16 @@ async function handleAcceptVerdict(
   semanticDiffHints: string[]
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const statusResult = await tryUpdateStatusOnAccept(workspaceRoot, args.phaseId, args.updateStatus)
+  const isAcceptOrAddressed =
+    result.parsedVerdict === CRITIC_VERDICTS.ACCEPT || result.parsedVerdict === CRITIC_VERDICTS.CONCERNS_ADDRESSED
+  const finalVerdict = isAcceptOrAddressed ? result.parsedVerdict : CRITIC_VERDICTS.ACCEPT
+
   if (statusResult.statusError) {
     return {
       content: [
         toTextContentWithHints(
           {
-            verdict: result.parsedVerdict,
+            verdict: finalVerdict,
             model: result.model,
             usage: result.response.usage,
             statusUpdated: false,
@@ -512,7 +516,7 @@ async function handleAcceptVerdict(
     content: [
       toTextContentWithHints(
         {
-          verdict: result.parsedVerdict,
+          verdict: finalVerdict,
           model: result.model,
           usage: result.response.usage,
           statusUpdated: statusResult.statusUpdated,
@@ -543,8 +547,9 @@ async function handleRejectOrContinue(
 
   // Promote REJECT/BLOCK → ACCEPT only when prior concerns existed and are all resolved.
   // Empty priorConcerns must NEVER vacuous-ACCEPT a Critic REJECT (Round 1 bug).
-  const priorConcerns = session?.concerns ?? []
-  if (priorConcerns.length > 0) {
+  const priorCount = session?.concerns.length ?? 0
+  if (priorCount > 0) {
+    const priorConcerns = nextSession.concerns.slice(0, priorCount)
     const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
     const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
     if (allPriorReviewed && noActivePriorConcerns) {
@@ -858,14 +863,17 @@ async function handleDebtVerdict(
   // Only check prior concerns for ACCEPT.
   // New concerns raised this round can be addressed in next round.
   // PRIOR concerns must ALL be REVIEWED_INVALID (verified as false positive or resolved).
-  const priorConcerns = session?.concerns ?? []
-  const hasPriorConcerns = priorConcerns.length > 0
-  const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
-  const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
-  const allPriorVerified = hasPriorConcerns && allPriorReviewed && noActivePriorConcerns
+  const priorCount = session?.concerns.length ?? 0
+  const hasPriorConcerns = priorCount > 0
+  if (hasPriorConcerns && updatedSession) {
+    const priorConcerns = updatedSession.concerns.slice(0, priorCount)
+    const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
+    const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
+    const allPriorVerified = allPriorReviewed && noActivePriorConcerns
 
-  if (allPriorVerified)
-    return handleAcceptVerdictFlow(reviewResult, updatedSession, workspaceRoot, args, semanticDiffHints)
+    if (allPriorVerified)
+      return handleAcceptVerdictFlow(reviewResult, updatedSession, workspaceRoot, args, semanticDiffHints)
+  }
 
   if (requiresDebtLog(round, CRITIC_VERDICTS.DEBT) && !args.logToDebt) {
     return handleDebtWithoutLog(reviewResult, round, semanticDiffHints)
