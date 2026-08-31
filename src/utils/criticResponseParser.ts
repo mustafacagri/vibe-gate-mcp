@@ -343,6 +343,14 @@ function validateLineNumbers(fileInfo: FileInfo | undefined, evidence: string): 
   return true
 }
 
+function extractKeywordsFromDescription(description: string): string[] {
+  return description
+    .toLowerCase()
+    .split(/[\s,\-|]+/)
+    .filter(w => w.length > 4)
+    .filter(w => !['does', 'doesnt', 'without', 'there', 'their'].includes(w))
+}
+
 function validateConcernSemanticMatch(fileInfo: FileInfo, concern: Concern, evidence: string): boolean {
   const lineRange = extractLineRangeFromEvidence(evidence)
   if (!lineRange) return true
@@ -350,12 +358,7 @@ function validateConcernSemanticMatch(fileInfo: FileInfo, concern: Concern, evid
   const contentAtLines = getContentAtLines(fileInfo.content, lineRange.start, lineRange.end)
   const contentLower = contentAtLines.toLowerCase()
 
-  const descLower = concern.description.toLowerCase()
-
-  const keyWords = descLower
-    .split(/[\s,\-|]+/)
-    .filter(w => w.length > 4)
-    .filter(w => !['does', 'doesnt', 'without', 'there', 'their'].includes(w))
+  const keyWords = extractKeywordsFromDescription(concern.description)
 
   debugLog(` validateConcernSemanticMatch: checking "${concern.ruleId}"`)
   debugLog(` validateConcernSemanticMatch: description: "${concern.description}"`)
@@ -413,6 +416,52 @@ function validateConcernSemanticMatch(fileInfo: FileInfo, concern: Concern, evid
   return true
 }
 
+function isConcernValidAgainstDiff(c: Concern, providedFiles: FileInfo[]): boolean {
+  const citedFile = extractFileFromEvidence(c.evidence)
+  debugLog(` filterConcernsBySemanticDiff: checking concern "${c.ruleId}" with evidence "${c.evidence}"`)
+  debugLog(` filterConcernsBySemanticDiff: extracted citedFile: "${citedFile}"`)
+
+  if (!citedFile) {
+    debugLog(
+      `[DEBUG] filterConcernsBySemanticDiff: concern "${c.ruleId}" has no parseable file in evidence "${c.evidence}" - keeping`
+    )
+    return true
+  }
+
+  const matchingFile = providedFiles.find(pf => citedFile.includes(pf.filePath) || pf.filePath.includes(citedFile))
+  debugLog(
+    `[DEBUG] filterConcernsBySemanticDiff: matchingFile: ${matchingFile ? matchingFile.filePath : 'NOT FOUND'}`
+  )
+
+  if (!matchingFile) {
+    debugLog(
+      `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - cites "${citedFile}" which is NOT in semanticDiff`
+    )
+    return false
+  }
+
+  const lineNumbersValid = validateLineNumbers(matchingFile, c.evidence)
+  if (!lineNumbersValid) {
+    debugLog(
+      `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - cites invalid line numbers in "${c.evidence}"`
+    )
+    return false
+  }
+
+  const semanticMatchValid = validateConcernSemanticMatch(matchingFile, c, c.evidence)
+  if (!semanticMatchValid) {
+    debugLog(
+      `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - description doesn't match content at cited lines`
+    )
+    return false
+  }
+
+  debugLog(
+    `[DEBUG] filterConcernsBySemanticDiff: KEEPING concern "${c.ruleId}" - "${citedFile}" found, line numbers valid, semantic match confirmed`
+  )
+  return true
+}
+
 /**
  * Filter concerns that cite files NOT in the semanticDiff OR cite invalid line numbers.
  * This is an automated validation to reject concerns that reference
@@ -442,51 +491,7 @@ export function filterConcernsBySemanticDiff(concerns: Concern[], semanticDiff: 
     debugLog(` filterConcernsBySemanticDiff: FILE ${pf.filePath} (${pf.totalLines} lines)`)
   }
 
-  const filtered = concerns.filter(c => {
-    const citedFile = extractFileFromEvidence(c.evidence)
-    debugLog(` filterConcernsBySemanticDiff: checking concern "${c.ruleId}" with evidence "${c.evidence}"`)
-    debugLog(` filterConcernsBySemanticDiff: extracted citedFile: "${citedFile}"`)
-
-    if (!citedFile) {
-      debugLog(
-        `[DEBUG] filterConcernsBySemanticDiff: concern "${c.ruleId}" has no parseable file in evidence "${c.evidence}" - keeping`
-      )
-      return true
-    }
-
-    const matchingFile = providedFiles.find(pf => citedFile.includes(pf.filePath) || pf.filePath.includes(citedFile))
-    debugLog(
-      `[DEBUG] filterConcernsBySemanticDiff: matchingFile: ${matchingFile ? matchingFile.filePath : 'NOT FOUND'}`
-    )
-
-    if (!matchingFile) {
-      debugLog(
-        `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - cites "${citedFile}" which is NOT in semanticDiff`
-      )
-      return false
-    }
-
-    const lineNumbersValid = validateLineNumbers(matchingFile, c.evidence)
-    if (!lineNumbersValid) {
-      debugLog(
-        `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - cites invalid line numbers in "${c.evidence}"`
-      )
-      return false
-    }
-
-    const semanticMatchValid = validateConcernSemanticMatch(matchingFile, c, c.evidence)
-    if (!semanticMatchValid) {
-      debugLog(
-        `[DEBUG] filterConcernsBySemanticDiff: REJECTING concern "${c.ruleId}" - description doesn't match content at cited lines`
-      )
-      return false
-    }
-
-    debugLog(
-      `[DEBUG] filterConcernsBySemanticDiff: KEEPING concern "${c.ruleId}" - "${citedFile}" found, line numbers valid, semantic match confirmed`
-    )
-    return true
-  })
+  const filtered = concerns.filter(c => isConcernValidAgainstDiff(c, providedFiles))
 
   if (filtered.length < concerns.length) {
     const rejected = concerns.length - filtered.length

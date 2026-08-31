@@ -7,6 +7,7 @@ import {
   parseConcernsFromResponse,
   parseVerificationsFromResponse,
   parseRequestsFromResponse,
+  filterConcernsBySemanticDiff,
   hasConcernBlocks,
   hasVerificationBlocks,
   hasRequestBlocks
@@ -329,6 +330,80 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+  })
+
+  describe('filterConcernsBySemanticDiff', () => {
+    it('returns empty array when input concerns array is empty', () => {
+      const result = filterConcernsBySemanticDiff([], 'FILE: src/index.ts\nCONTENT:\nline 1\n')
+      expect(result).toEqual([])
+    })
+
+    it('returns all concerns unchanged when semanticDiff is empty or whitespace', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicated logic',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/index.ts:1',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(filterConcernsBySemanticDiff(concerns, '')).toEqual(concerns)
+      expect(filterConcernsBySemanticDiff(concerns, '   \n  ')).toEqual(concerns)
+    })
+
+    it.each([
+      {
+        name: 'cited file not present in semanticDiff',
+        evidence: 'src/missing.ts:10',
+        description: 'Duplicated logic in function processData',
+        diff: 'FILE: src/other.ts\nCONTENT:\nconst a = 1;\nconst b = 2;\n'
+      },
+      {
+        name: 'cited line range exceeds total lines',
+        evidence: 'src/index.ts:100-110',
+        description: 'Duplicated logic in function processData',
+        diff: 'FILE: src/index.ts\nCONTENT:\nline 1\nline 2\nline 3\n'
+      },
+      {
+        name: 'identifier or keywords do not match content at cited lines',
+        evidence: 'src/index.ts:1-2',
+        description: 'Duplicate calculateTotal calculation in helper function',
+        diff: 'FILE: src/index.ts\nCONTENT:\nconst x = 100;\nconst y = 200;\n'
+      }
+    ])('filters out concern when $name', ({ evidence, description, diff }) => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description,
+          severity: SEVERITY.WARNING,
+          evidence,
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, diff)
+      expect(result).toHaveLength(0)
+    })
+
+    it('retains concerns with matching file, valid line range, and matching content keywords', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicate calculateTotal calculation in helper function',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/index.ts:1-3',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const diff =
+        'FILE: src/index.ts\nCONTENT:\nfunction calculateTotal() {\n  return duplicate + calculation;\n}\n'
+      const result = filterConcernsBySemanticDiff(concerns, diff)
+      expect(result).toHaveLength(1)
+      expect(result[0].ruleId).toBe('DRY-01')
     })
   })
 })
