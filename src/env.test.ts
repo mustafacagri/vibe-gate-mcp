@@ -69,4 +69,19 @@ describe('loadEnvironmentVariables', () => {
       logSpy.mockRestore()
     }
   })
+
+  it('does not log sensitive environment variable values when DEBUG=1', async () => {
+    process.env.DEBUG = '1'
+    process.env.CRITIC_PROVIDER = 'secret-provider'
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      loadEnvironmentVariables(packageDir)
+      const loggedMessages = stderrSpy.mock.calls.map(call => call[0].toString()).join('')
+      expect(loggedMessages).not.toContain('CRITIC_PROVIDER')
+      expect(loggedMessages).not.toContain('secret-provider')
+    } finally {
+      stderrSpy.mockRestore()
+    }
+  })
 })
