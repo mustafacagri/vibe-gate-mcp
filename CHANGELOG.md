@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-08-31
+
+### Fixed
+
+- Added a 30-second timeout to OpenCode external fetch calls.
+- Stopped logging `CRITIC_PROVIDER` in debug output.
+- Added safe fallback handling for invalid, unreadable, or oversized `rules.json` files.
+
+### Tests
+
+- Added unit coverage for token estimation, error handling, debug logging, configuration, and OpenCode timeout behavior.
+
 ## [0.1.0] - 2026-08-28
 
 Initial release of `vibe-gate-mcp`.
