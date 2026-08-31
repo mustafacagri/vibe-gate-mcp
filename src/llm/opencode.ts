@@ -7,7 +7,13 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { LLM_MAX_TOKENS, OPENCODE_FETCH_TIMEOUT_MS, OPENCODE_PLANS, OPENCODE_ZEN_URLS, type OpenCodePlanId } from '@/constants'
+import {
+  LLM_MAX_TOKENS,
+  OPENCODE_FETCH_TIMEOUT_MS,
+  OPENCODE_PLANS,
+  OPENCODE_ZEN_URLS,
+  type OpenCodePlanId
+} from '@/constants'
 import {
   buildOpenCodeGeminiUrl,
   getOpenCodeAnthropicBaseUrl,
