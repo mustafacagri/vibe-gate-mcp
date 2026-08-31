@@ -300,4 +300,65 @@ FIX REQUIRED: Extract to utility`
       expect(concerns[0].severity).toBe(SEVERITY.WARNING)
     })
   })
+
+  describe('Session persistence vs clearing per round', () => {
+    it('verifies round <= 1 clears session while round > 1 preserves session', async () => {
+      const { clearSession, readSession, writeSession } = await import('@/conflict-loop/session')
+      const { handleSubmitPhaseReview } = await import('@/tools/submit-phase-review')
+      const { vi } = await import('vitest')
+
+      // Spy on session functions using vi.spyOn
+      const clearSpy = vi.spyOn(await import('@/conflict-loop/session'), 'clearSession').mockImplementation(async () => {})
+      const readSpy = vi.spyOn(await import('@/conflict-loop/session'), 'readSession').mockImplementation(async () => null)
+      vi.spyOn(await import('@/conflict-loop/session'), 'writeSession').mockImplementation(async () => {})
+
+      vi.spyOn(await import('@/llm'), 'createLLMProvider').mockReturnValue({
+        complete: vi.fn().mockResolvedValue({
+          content: 'VERDICT: REJECT\nCONCERN: DRY-01 | Duplication\nSEVERITY: WARNING\nLOCATION: - api/index.ts (line 31)\nFIX REQUIRED: Extract',
+          usage: { completionTokens: 50, promptTokens: 100 }
+        })
+      })
+
+      vi.spyOn(await import('@/workspace'), 'getWorkspaceRoot').mockReturnValue('/mock-workspace')
+      vi.spyOn(await import('@/roadmap'), 'getStatus').mockResolvedValue('in-progress' as any)
+      vi.spyOn(await import('@/rules/loader'), 'loadRules').mockResolvedValue([] as any)
+
+      // Test round 1 clears session
+      clearSpy.mockClear()
+      await handleSubmitPhaseReview({
+        phaseId: 'phase-1',
+        report: 'Report for round 1',
+        semanticDiff: 'FILE: api/index.ts\nCONTENT: const x = 1;',
+        round: 1
+      })
+      expect(clearSpy).toHaveBeenCalledWith('/mock-workspace')
+
+      // Test round undefined (defaults to 1) clears session
+      clearSpy.mockClear()
+      await handleSubmitPhaseReview({
+        phaseId: 'phase-1',
+        report: 'Report for round 1',
+        semanticDiff: 'FILE: api/index.ts\nCONTENT: const x = 1;'
+      })
+      expect(clearSpy).toHaveBeenCalledWith('/mock-workspace')
+
+      // Test round 2 does NOT clear session
+      clearSpy.mockClear()
+      readSpy.mockResolvedValueOnce({
+        phaseId: 'phase-1',
+        round: 1,
+        concerns: [],
+        history: []
+      })
+      await handleSubmitPhaseReview({
+        phaseId: 'phase-1',
+        report: 'Report for round 2',
+        semanticDiff: 'FILE: api/index.ts\nCONTENT: const x = 1;',
+        round: 2
+      })
+      expect(clearSpy).not.toHaveBeenCalled()
+
+      vi.restoreAllMocks()
+    })
+  })
 })
