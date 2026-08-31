@@ -71,9 +71,8 @@ function validateFilesArray(paths: string[]): BuildSemanticDiffFromFilesResult |
 async function assertReadableSourceFile(
   workspaceRoot: string,
   relativePath: string,
-  absolutePath: string,
-  totalBytesSoFar: number
-): Promise<{ ok: true; nextTotalBytes: number } | { ok: false; result: BuildSemanticDiffFromFilesResult }> {
+  absolutePath: string
+): Promise<{ ok: true; size: number } | { ok: false; result: BuildSemanticDiffFromFilesResult }> {
   let st
   try {
     st = await stat(absolutePath)
@@ -107,17 +106,6 @@ async function assertReadableSourceFile(
       }
     }
   }
-  const nextTotalBytes = totalBytesSoFar + st.size
-  if (nextTotalBytes > SEMANTIC_DIFF_SOURCE_FILES.MAX_TOTAL_BYTES) {
-    return {
-      ok: false,
-      result: {
-        ok: false,
-        code: 'TOTAL_TOO_LARGE',
-        message: `files total size exceeds maximum (${SEMANTIC_DIFF_SOURCE_FILES.MAX_TOTAL_BYTES} bytes).`
-      }
-    }
-  }
 
   const canonical = await verifyCanonicalPathUnderWorkspace(
     workspaceRoot,
@@ -128,7 +116,7 @@ async function assertReadableSourceFile(
     return { ok: false, result: mapPathError(canonical.code, canonical.message) }
   }
 
-  return { ok: true, nextTotalBytes }
+  return { ok: true, size: st.size }
 }
 
 async function readSourceFileContent(
@@ -161,6 +149,23 @@ async function readSourceFileContent(
   return { ok: true, content }
 }
 
+type ProcessSourceFileResult =
+  | { ok: true; relativePath: string; size: number; content: string }
+  | { ok: false; result: BuildSemanticDiffFromFilesResult }
+
+async function processSourceFile(workspaceRoot: string, relativePath: string): Promise<ProcessSourceFileResult> {
+  const pathResult = resolveSafePathInWorkspace(workspaceRoot, relativePath, WORKSPACE_PATH_KIND.SOURCE_FILE)
+  if (!pathResult.ok) return { ok: false, result: mapPathError(pathResult.code, pathResult.message) }
+
+  const sizeCheck = await assertReadableSourceFile(workspaceRoot, relativePath, pathResult.absolutePath)
+  if (!sizeCheck.ok) return sizeCheck
+
+  const read = await readSourceFileContent(pathResult.absolutePath, relativePath)
+  if (!read.ok) return read
+
+  return { ok: true, relativePath, size: sizeCheck.size, content: read.content }
+}
+
 export async function buildSemanticDiffFromSourceFiles(
   workspaceRoot: string,
   relativePaths: string[]
@@ -169,23 +174,26 @@ export async function buildSemanticDiffFromSourceFiles(
   const arrayError = validateFilesArray(paths)
   if (arrayError) return arrayError
 
+  const fileResults = await Promise.all(paths.map(relativePath => processSourceFile(workspaceRoot, relativePath)))
+
   const blocks: string[] = []
   const filesLoaded: string[] = []
   let totalBytes = 0
 
-  for (const relativePath of paths) {
-    const pathResult = resolveSafePathInWorkspace(workspaceRoot, relativePath, WORKSPACE_PATH_KIND.SOURCE_FILE)
-    if (!pathResult.ok) return mapPathError(pathResult.code, pathResult.message)
+  for (const item of fileResults) {
+    if (!item.ok) return item.result
 
-    const sizeCheck = await assertReadableSourceFile(workspaceRoot, relativePath, pathResult.absolutePath, totalBytes)
-    if (!sizeCheck.ok) return sizeCheck.result
-    totalBytes = sizeCheck.nextTotalBytes
+    totalBytes += item.size
+    if (totalBytes > SEMANTIC_DIFF_SOURCE_FILES.MAX_TOTAL_BYTES) {
+      return {
+        ok: false,
+        code: 'TOTAL_TOO_LARGE',
+        message: `files total size exceeds maximum (${SEMANTIC_DIFF_SOURCE_FILES.MAX_TOTAL_BYTES} bytes).`
+      }
+    }
 
-    const read = await readSourceFileContent(pathResult.absolutePath, relativePath)
-    if (!read.ok) return read.result
-
-    blocks.push(formatFileBlock(relativePath, read.content))
-    filesLoaded.push(relativePath)
+    blocks.push(formatFileBlock(item.relativePath, item.content))
+    filesLoaded.push(item.relativePath)
   }
 
   return {

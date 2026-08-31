@@ -65,4 +65,22 @@ describe('buildSemanticDiffFromSourceFiles', () => {
     if (!result.ok) expect(result.code).toBe('FILE_NOT_FOUND')
     await rm(root, { recursive: true, force: true })
   })
+
+  it('rejects total size exceeding MAX_TOTAL_BYTES', async () => {
+    const root = join(tmpdir(), `vibe-large-${Date.now()}`)
+    await mkdir(root, { recursive: true })
+    // Each file is 0.6MB; 9 files = 5.4MB > MAX_TOTAL_BYTES (5MB)
+    const largeContent = 'a'.repeat(600 * 1024)
+    const paths: string[] = []
+    for (let i = 0; i < 9; i++) {
+      const relPath = `f${i}.txt`
+      paths.push(relPath)
+      await writeFile(join(root, relPath), largeContent, 'utf8')
+    }
+
+    const result = await buildSemanticDiffFromSourceFiles(root, paths)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('TOTAL_TOO_LARGE')
+    await rm(root, { recursive: true, force: true })
+  })
 })
