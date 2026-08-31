@@ -2,13 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { readChangedFilesWithBudget, formatFileContentsForPrompt } from './read-changed-files'
+import { readChangedFilesWithBudget } from './read-changed-files.js'
 
 describe('readChangedFilesWithBudget', () => {
   let testDir: string
+  let testId = 0
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `vibe-gate-test-${Math.random().toString(36).substring(2, 9)}`)
+    testId += 1
+    testDir = join(tmpdir(), `vibe-gate-test-${Date.now()}-${testId}`)
     await mkdir(testDir, { recursive: true })
   })
 
