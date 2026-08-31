@@ -339,9 +339,7 @@ function validateLineNumbers(fileInfo: FileInfo | undefined, evidence: string): 
   if (!lineRange) return true
 
   if (lineRange.start < 1 || lineRange.end < lineRange.start) {
-    debugLog(
-      `[DEBUG] validateLineNumbers: REJECTING - invalid line range ${lineRange.start}-${lineRange.end}`
-    )
+    debugLog(`[DEBUG] validateLineNumbers: REJECTING - invalid line range ${lineRange.start}-${lineRange.end}`)
     return false
   }
 
