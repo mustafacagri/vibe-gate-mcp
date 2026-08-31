@@ -28,13 +28,13 @@ const DEFAULT_STATUS: PhaseStatus = {
 
 async function parseStatusFromRoadmap(workspaceRoot: string): Promise<PhaseStatus | null> {
   const paths = [PATHS.VIBE_ROADMAP, PATHS.DOCS_ROADMAP]
-  for (const rel of paths) {
-    const path = join(workspaceRoot, rel)
-    try {
+  const results = await Promise.allSettled(
+    paths.map(async rel => {
+      const path = join(workspaceRoot, rel)
       const raw = await readFile(path, 'utf-8')
       const matches = [...raw.matchAll(PHASE_ID_REGEX)]
       const lastMatch = matches[matches.length - 1]
-      if (!lastMatch) continue
+      if (!lastMatch) return null
       const lastCompletedTask = lastMatch[1]
       const top = lastCompletedTask.split('.')[0]
       const currentPhase = Number.parseInt(top, 10)
@@ -43,8 +43,12 @@ async function parseStatusFromRoadmap(workspaceRoot: string): Promise<PhaseStatu
         lastCompletedTask,
         currentPhase: Number.isNaN(currentPhase) ? 0 : currentPhase
       }
-    } catch {
-      continue
+    })
+  )
+
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value !== null) {
+      return result.value
     }
   }
   return null
