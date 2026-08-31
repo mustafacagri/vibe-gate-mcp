@@ -303,20 +303,17 @@ FIX REQUIRED: Extract to utility`
 
   describe('Session persistence vs clearing per round', () => {
     it('verifies round <= 1 clears session while round > 1 preserves session', async () => {
-      const { clearSession, readSession, writeSession } = await import('@/conflict-loop/session')
       const { handleSubmitPhaseReview } = await import('@/tools/submit-phase-review')
       const { vi } = await import('vitest')
 
       // Spy on session functions using vi.spyOn
-      const clearSpy = vi
-        .spyOn(await import('@/conflict-loop/session'), 'clearSession')
-        .mockImplementation(async () => {})
-      const readSpy = vi
-        .spyOn(await import('@/conflict-loop/session'), 'readSession')
-        .mockImplementation(async () => null)
-      vi.spyOn(await import('@/conflict-loop/session'), 'writeSession').mockImplementation(async () => {})
+      const sessionModule = await import('@/conflict-loop/session')
+      const clearSpy = vi.spyOn(sessionModule, 'clearSession').mockImplementation(async () => {})
+      const readSpy = vi.spyOn(sessionModule, 'readSession').mockImplementation(async () => null)
+      vi.spyOn(sessionModule, 'writeSession').mockImplementation(async () => {})
 
-      vi.spyOn(await import('@/llm'), 'createLLMProvider').mockReturnValue({
+      const llmModule = await import('@/llm')
+      vi.spyOn(llmModule, 'createLLMProvider').mockReturnValue({
         complete: vi.fn().mockResolvedValue({
           content:
             'VERDICT: REJECT\nCONCERN: DRY-01 | Duplication\nSEVERITY: WARNING\nLOCATION: - api/index.ts (line 31)\nFIX REQUIRED: Extract',
@@ -324,9 +321,23 @@ FIX REQUIRED: Extract to utility`
         })
       })
 
-      vi.spyOn(await import('@/workspace'), 'getWorkspaceRoot').mockReturnValue('/mock-workspace')
-      vi.spyOn(await import('@/roadmap'), 'getStatus').mockResolvedValue('in-progress' as any)
-      vi.spyOn(await import('@/rules/loader'), 'loadRules').mockResolvedValue([] as any)
+      const workspaceModule = await import('@/workspace')
+      vi.spyOn(workspaceModule, 'getWorkspaceRoot').mockReturnValue('/mock-workspace')
+
+      const roadmapModule = await import('@/roadmap')
+      vi.spyOn(roadmapModule, 'getStatus').mockResolvedValue({
+        version: '1.0.0',
+        currentPhase: 1,
+        lastCompletedTask: null,
+        conflictCount: 0,
+        lastUpdated: null
+      })
+
+      const rulesModule = await import('@/rules/loader')
+      vi.spyOn(rulesModule, 'loadRules').mockResolvedValue({
+        hardRules: [],
+        softRules: []
+      })
 
       // Test round 1 clears session
       clearSpy.mockClear()
