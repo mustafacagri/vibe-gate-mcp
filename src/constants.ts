@@ -172,6 +172,9 @@ export const OPENCODE_ZEN_URLS = {
   MODELS_LIST: `${OPENCODE_ZEN.BASE_URL}/${OPENCODE_ZEN.PATHS.MODELS}`
 } as const
 
+/** Default timeout for external fetch calls in OpenCode API integrations (30 seconds) */
+export const OPENCODE_FETCH_TIMEOUT_MS = 30_000
+
 /** OpenCode Go gateway — @see https://opencode.ai/docs/go/ */
 export const OPENCODE_GO = {
   BASE_URL: 'https://opencode.ai/zen/go/v1',

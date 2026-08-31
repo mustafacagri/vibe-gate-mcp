@@ -7,7 +7,13 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { LLM_MAX_TOKENS, OPENCODE_PLANS, OPENCODE_ZEN_URLS, type OpenCodePlanId } from '@/constants'
+import {
+  LLM_MAX_TOKENS,
+  OPENCODE_FETCH_TIMEOUT_MS,
+  OPENCODE_PLANS,
+  OPENCODE_ZEN_URLS,
+  type OpenCodePlanId
+} from '@/constants'
 import {
   buildOpenCodeGeminiUrl,
   getOpenCodeAnthropicBaseUrl,
@@ -153,7 +159,8 @@ async function completeViaResponses(apiKey: string, model: string, messages: LLM
       model: normalizeOpenCodeModelId(model),
       input: toRoleContentMessages(messages),
       max_output_tokens: LLM_MAX_TOKENS
-    })
+    }),
+    signal: AbortSignal.timeout(OPENCODE_FETCH_TIMEOUT_MS)
   })
 
   if (!response.ok) {
@@ -195,7 +202,8 @@ async function completeViaGemini(
     body: JSON.stringify({
       contents: toGeminiContents(messages),
       generationConfig: { maxOutputTokens: LLM_MAX_TOKENS }
-    })
+    }),
+    signal: AbortSignal.timeout(OPENCODE_FETCH_TIMEOUT_MS)
   })
 
   if (!response.ok) {
