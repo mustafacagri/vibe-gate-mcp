@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { parseConcernsFromResponse, parseVerificationsFromResponse } from '@/utils/criticResponseParser'
 import { buildCriticResponse } from '@/utils/responseBuilder'
 import { CRITIC_VERDICTS, SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
+import { canPromotePriorConcernsToAccept } from '@/tools/submit-phase-review'
 import type { Concern } from '@/conflict-loop/types'
 
 describe('E2E: LLM Response → Parsed → Built', () => {
@@ -298,6 +299,55 @@ FIX REQUIRED: Extract to utility`
 
       expect(concerns).toHaveLength(1)
       expect(concerns[0].severity).toBe(SEVERITY.WARNING)
+    })
+  })
+
+  describe('priorConcerns vacuous ACCEPT prevention', () => {
+    it('ensures empty priorConcerns does not satisfy canPromotePriorConcernsToAccept', () => {
+      const priorConcerns: Concern[] = []
+      expect(canPromotePriorConcernsToAccept(priorConcerns)).toBe(false)
+    })
+
+    it('returns false when priorConcerns has PENDING concern', () => {
+      const priorConcerns: Concern[] = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplication',
+          severity: SEVERITY.BLOCKING,
+          evidence: 'a.ts:1',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(canPromotePriorConcernsToAccept(priorConcerns)).toBe(false)
+    })
+
+    it('returns false when priorConcerns has REVIEWED_VALID concern', () => {
+      const priorConcerns: Concern[] = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplication',
+          severity: SEVERITY.BLOCKING,
+          evidence: 'a.ts:1',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.REVIEWED_VALID
+        }
+      ]
+      expect(canPromotePriorConcernsToAccept(priorConcerns)).toBe(false)
+    })
+
+    it('returns true when priorConcerns existed and are all REVIEWED_INVALID (resolved)', () => {
+      const priorConcerns: Concern[] = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplication',
+          severity: SEVERITY.BLOCKING,
+          evidence: 'a.ts:1',
+          verified: true,
+          reviewStatus: CONCERN_REVIEW_STATUS.REVIEWED_INVALID
+        }
+      ]
+      expect(canPromotePriorConcernsToAccept(priorConcerns)).toBe(true)
     })
   })
 })

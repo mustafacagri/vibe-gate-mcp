@@ -75,6 +75,17 @@ type VerdictId = (typeof CRITIC_VERDICTS)[keyof typeof CRITIC_VERDICTS]
  *
  * No char limits. No truncation. Compact by structure, not by cutting.
  */
+/**
+ * Helper to determine if prior concerns exist and are all reviewed & non-active.
+ * Empty priorConcerns must NEVER vacuous-ACCEPT a Critic REJECT (Round 1 bug).
+ */
+export function canPromotePriorConcernsToAccept(priorConcerns: Concern[]): boolean {
+  if (!priorConcerns || priorConcerns.length === 0) return false
+  const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
+  const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
+  return allPriorReviewed && noActivePriorConcerns
+}
+
 function buildHistorySummary(
   history: ReviewRound[],
   maxTokens: number = CRITIC_THRESHOLDS.HISTORY_SUMMARY_MAX_TOKENS
@@ -544,12 +555,8 @@ async function handleRejectOrContinue(
   // Promote REJECT/BLOCK → ACCEPT only when prior concerns existed and are all resolved.
   // Empty priorConcerns must NEVER vacuous-ACCEPT a Critic REJECT (Round 1 bug).
   const priorConcerns = session?.concerns ?? []
-  if (priorConcerns.length > 0) {
-    const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
-    const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
-    if (allPriorReviewed && noActivePriorConcerns) {
-      return handleAcceptVerdict(result, workspaceRoot, args, semanticDiffHints)
-    }
+  if (canPromotePriorConcernsToAccept(priorConcerns)) {
+    return handleAcceptVerdict(result, workspaceRoot, args, semanticDiffHints)
   }
 
   // Only DEADLOCK if genuinely unresolvable after max rounds
@@ -859,10 +866,7 @@ async function handleDebtVerdict(
   // New concerns raised this round can be addressed in next round.
   // PRIOR concerns must ALL be REVIEWED_INVALID (verified as false positive or resolved).
   const priorConcerns = session?.concerns ?? []
-  const hasPriorConcerns = priorConcerns.length > 0
-  const allPriorReviewed = priorConcerns.every(c => c.reviewStatus !== CONCERN_REVIEW_STATUS.PENDING)
-  const noActivePriorConcerns = !priorConcerns.some(c => c.reviewStatus === CONCERN_REVIEW_STATUS.REVIEWED_VALID)
-  const allPriorVerified = hasPriorConcerns && allPriorReviewed && noActivePriorConcerns
+  const allPriorVerified = canPromotePriorConcernsToAccept(priorConcerns)
 
   if (allPriorVerified)
     return handleAcceptVerdictFlow(reviewResult, updatedSession, workspaceRoot, args, semanticDiffHints)
