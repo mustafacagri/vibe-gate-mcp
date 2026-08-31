@@ -308,13 +308,18 @@ FIX REQUIRED: Extract to utility`
       const { vi } = await import('vitest')
 
       // Spy on session functions using vi.spyOn
-      const clearSpy = vi.spyOn(await import('@/conflict-loop/session'), 'clearSession').mockImplementation(async () => {})
-      const readSpy = vi.spyOn(await import('@/conflict-loop/session'), 'readSession').mockImplementation(async () => null)
+      const clearSpy = vi
+        .spyOn(await import('@/conflict-loop/session'), 'clearSession')
+        .mockImplementation(async () => {})
+      const readSpy = vi
+        .spyOn(await import('@/conflict-loop/session'), 'readSession')
+        .mockImplementation(async () => null)
       vi.spyOn(await import('@/conflict-loop/session'), 'writeSession').mockImplementation(async () => {})
 
       vi.spyOn(await import('@/llm'), 'createLLMProvider').mockReturnValue({
         complete: vi.fn().mockResolvedValue({
-          content: 'VERDICT: REJECT\nCONCERN: DRY-01 | Duplication\nSEVERITY: WARNING\nLOCATION: - api/index.ts (line 31)\nFIX REQUIRED: Extract',
+          content:
+            'VERDICT: REJECT\nCONCERN: DRY-01 | Duplication\nSEVERITY: WARNING\nLOCATION: - api/index.ts (line 31)\nFIX REQUIRED: Extract',
           usage: { completionTokens: 50, promptTokens: 100 }
         })
       })
