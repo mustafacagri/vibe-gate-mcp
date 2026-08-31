@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { OPENCODE_FETCH_TIMEOUT_MS, OPENCODE_PLANS, OPENCODE_ZEN_MODELS } from '@/constants'
+import { OPENCODE_PLANS, OPENCODE_ZEN_MODELS } from '@/constants'
 import { createOpenCodeProvider } from '@/llm/opencode'
 
 describe('createOpenCodeProvider', () => {
