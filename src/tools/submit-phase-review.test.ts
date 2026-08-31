@@ -8,6 +8,7 @@ import { parseConcernsFromResponse, parseVerificationsFromResponse } from '@/uti
 import { buildCriticResponse } from '@/utils/responseBuilder'
 import { CRITIC_VERDICTS, SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 import type { Concern } from '@/conflict-loop/types'
+import { determineVerdict } from '@/tools/submit-phase-review'
 
 describe('E2E: LLM Response → Parsed → Built', () => {
   describe('CONCERNS_ADDRESSED flow', () => {
@@ -298,6 +299,28 @@ FIX REQUIRED: Extract to utility`
 
       expect(concerns).toHaveLength(1)
       expect(concerns[0].severity).toBe(SEVERITY.WARNING)
+    })
+  })
+
+  describe('determineVerdict security & logic', () => {
+    it('returns INSUFFICIENT_REVIEW when parsedVerdict is null (safeguard against prompt injection)', () => {
+      const result = determineVerdict(null, 150)
+      expect(result.verdict).toBe(CRITIC_VERDICTS.INSUFFICIENT_REVIEW)
+      expect(result.insufficientReview).toBe(true)
+    })
+
+    it('preserves valid parsed verdicts without relying on unparsed response content', () => {
+      const acceptResult = determineVerdict(CRITIC_VERDICTS.ACCEPT, 100)
+      expect(acceptResult.verdict).toBe(CRITIC_VERDICTS.ACCEPT)
+      expect(acceptResult.insufficientReview).toBe(false)
+
+      const rejectResult = determineVerdict(CRITIC_VERDICTS.REJECT, 100)
+      expect(rejectResult.verdict).toBe(CRITIC_VERDICTS.REJECT)
+      expect(rejectResult.insufficientReview).toBe(false)
+
+      const debtResult = determineVerdict(CRITIC_VERDICTS.DEBT, 100)
+      expect(debtResult.verdict).toBe(CRITIC_VERDICTS.DEBT)
+      expect(debtResult.insufficientReview).toBe(false)
     })
   })
 })
