@@ -41,7 +41,7 @@ describe('extractCriticalSnippets', () => {
 
     const result = await extractCriticalSnippets(testDir)
 
-    expect(result.auth.length).toBe(10)
+    expect(result.auth).toHaveLength(10)
   })
 
   it('ignores configured directories like node_modules, .git, dist, .vibe, .yarn', async () => {
