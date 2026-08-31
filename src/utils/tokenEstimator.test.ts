@@ -6,7 +6,7 @@ import {
   getEffectiveContextBudget,
   getMaxContextBudget,
   budgetToTokens
-} from './tokenEstimator'
+} from './tokenEstimator.js'
 
 describe('estimateTokens', () => {
   it('returns 0 for empty string', () => {
