@@ -27,50 +27,67 @@ export interface FileContent {
   truncated: boolean
 }
 
+type RawFileStatus = string | 'ACCESS_DENIED' | 'UNREADABLE'
+
+async function resolveRawFileStatus(
+  workspaceRoot: string,
+  filePath: string,
+  cachedRaw?: RawFileStatus
+): Promise<RawFileStatus> {
+  if (cachedRaw !== undefined) return cachedRaw
+  if (!isWithinWorkspace(workspaceRoot, filePath)) return 'ACCESS_DENIED'
+  try {
+    const fullPath = join(workspaceRoot, filePath)
+    return await readFile(fullPath, 'utf-8')
+  } catch {
+    return 'UNREADABLE'
+  }
+}
+
+function sliceLineRange(lines: string[], lineRange: string): string {
+  let startIdx = 0
+  let endIdx = lines.length
+  const parts = lineRange.split('-')
+  const start = parseInt(parts[0], 10)
+  if (!isNaN(start)) startIdx = Math.max(0, start - 1)
+  if (parts.length > 1) {
+    const end = parseInt(parts[1], 10)
+    if (!isNaN(end)) endIdx = Math.min(lines.length, end)
+  } else {
+    startIdx = Math.max(0, startIdx - 50)
+    endIdx = Math.min(lines.length, startIdx + 100)
+  }
+  return lines
+    .slice(startIdx, endIdx)
+    .map((l, i) => `${startIdx + i + 1} | ${l}`)
+    .join('\n')
+}
+
 export async function readChangedFileContent(
   workspaceRoot: string,
   filePath: string,
   maxLines: number = CONTEXT_LIMITS.MAX_LINES_PER_FILE,
-  lineRange?: string
+  lineRange?: string,
+  cachedRaw?: RawFileStatus
 ): Promise<FileContent> {
-  // Path traversal guard: reject paths outside workspace
-  if (!isWithinWorkspace(workspaceRoot, filePath)) {
+  const rawOrStatus = await resolveRawFileStatus(workspaceRoot, filePath, cachedRaw)
+
+  if (rawOrStatus === 'ACCESS_DENIED') {
     return { path: filePath, content: '(access denied: path outside workspace)', truncated: false }
   }
-
-  try {
-    const fullPath = join(workspaceRoot, filePath)
-    const raw = await readFile(fullPath, 'utf-8')
-    const lines = raw.split('\n')
-
-    if (lineRange) {
-      let startIdx = 0
-      let endIdx = lines.length
-      const parts = lineRange.split('-')
-      const start = parseInt(parts[0], 10)
-      if (!isNaN(start)) startIdx = Math.max(0, start - 1)
-      if (parts.length > 1) {
-        const end = parseInt(parts[1], 10)
-        if (!isNaN(end)) endIdx = Math.min(lines.length, end)
-      } else {
-        // If single line is requested, give 50 lines before and after for context
-        startIdx = Math.max(0, startIdx - 50)
-        endIdx = Math.min(lines.length, startIdx + 100)
-      }
-      // Prepend line numbers so Critic knows exactly where they are
-      const content = lines
-        .slice(startIdx, endIdx)
-        .map((l, i) => `${startIdx + i + 1} | ${l}`)
-        .join('\n')
-      return { path: filePath, content, truncated: false }
-    }
-
-    const content = lines.slice(0, maxLines).join('\n')
-    const truncated = lines.length > maxLines
-    return { path: filePath, content, truncated }
-  } catch {
+  if (rawOrStatus === 'UNREADABLE') {
     return { path: filePath, content: CONTEXT_LIMITS.FILE_UNREADABLE, truncated: false }
   }
+
+  const lines = rawOrStatus.split('\n')
+
+  if (lineRange) {
+    return { path: filePath, content: sliceLineRange(lines, lineRange), truncated: false }
+  }
+
+  const content = lines.slice(0, maxLines).join('\n')
+  const truncated = lines.length > maxLines
+  return { path: filePath, content, truncated }
 }
 
 function findQuotedString(line: string, startPos: number): string | null {
@@ -180,6 +197,32 @@ export async function expandImports(
   return gatherExpandedImports(workspaceRoot, files, fileContents, fileDir)
 }
 
+async function fetchRawFile(workspaceRoot: string, filePath: string): Promise<[string, RawFileStatus]> {
+  if (!isWithinWorkspace(workspaceRoot, filePath)) {
+    return [filePath, 'ACCESS_DENIED']
+  }
+  try {
+    const fullPath = join(workspaceRoot, filePath)
+    const raw = await readFile(fullPath, 'utf-8')
+    return [filePath, raw]
+  } catch {
+    return [filePath, 'UNREADABLE']
+  }
+}
+
+async function prefetchMissingFiles(
+  workspaceRoot: string,
+  fileList: string[],
+  rawMap: Map<string, RawFileStatus>
+): Promise<void> {
+  const missing = fileList.filter(f => !rawMap.has(f.split(':')[0]))
+  if (missing.length === 0) return
+  const entries = await Promise.all(missing.map(fp => fetchRawFile(workspaceRoot, fp.split(':')[0])))
+  for (const [k, v] of entries) {
+    rawMap.set(k, v)
+  }
+}
+
 async function addFileToContents(
   workspaceRoot: string,
   file: string,
@@ -187,7 +230,8 @@ async function addFileToContents(
   fileContentMap: Map<string, string>,
   totalTokens: { value: number },
   maxTokens: number,
-  allowFullRead: boolean = false
+  allowFullRead: boolean = false,
+  cachedRaw?: RawFileStatus
 ): Promise<boolean> {
   const baseLines = CONTEXT_LIMITS.MAX_LINES_PER_FILE
 
@@ -196,12 +240,18 @@ async function addFileToContents(
   const filePath = parts[0]
   const lineRange = parts[1]
 
-  const fileContent = await readChangedFileContent(workspaceRoot, filePath, baseLines, lineRange)
+  const fileContent = await readChangedFileContent(workspaceRoot, filePath, baseLines, lineRange, cachedRaw)
   const fileTokens = estimateTokens(fileContent.content)
   const remainingBudget = maxTokens - totalTokens.value
 
   if (allowFullRead && !lineRange && fileTokens <= remainingBudget) {
-    const fullContent = await readChangedFileContent(workspaceRoot, filePath, Number.MAX_SAFE_INTEGER)
+    const fullContent = await readChangedFileContent(
+      workspaceRoot,
+      filePath,
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      cachedRaw
+    )
     fileContentMap.set(file, fullContent.content)
     contents.push(fullContent)
     totalTokens.value += estimateTokens(fullContent.content)
@@ -218,7 +268,9 @@ async function addFileToContents(
   const truncatedContent = await readChangedFileContent(
     workspaceRoot,
     filePath,
-    CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK
+    CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK,
+    undefined,
+    cachedRaw
   )
   const truncatedTokens = estimateTokens(truncatedContent.content)
   if (totalTokens.value + truncatedTokens <= maxTokens) {
@@ -234,14 +286,17 @@ async function addExpandedFileToContents(
   expandedFile: string,
   contents: FileContent[],
   totalTokens: { value: number },
-  maxTokens: number
+  maxTokens: number,
+  cachedRaw?: RawFileStatus
 ): Promise<boolean> {
   if (totalTokens.value >= maxTokens) return true
 
   const expandedContent = await readChangedFileContent(
     workspaceRoot,
     expandedFile,
-    CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK
+    CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK,
+    undefined,
+    cachedRaw
   )
   const expandedTokens = estimateTokens(expandedContent.content)
   if (totalTokens.value + expandedTokens <= maxTokens) {
@@ -263,8 +318,16 @@ export async function readChangedFilesWithBudget(
   const totalTokens = { value: 0 }
   let budgetExceeded = false
 
+  const uniquePaths = Array.from(new Set(filesChanged.map(f => f.split(':')[0])))
+  const rawEntries = await Promise.all(uniquePaths.map(fp => fetchRawFile(workspaceRoot, fp)))
+  const rawMap = new Map<string, RawFileStatus>(rawEntries)
+
   for (const file of filesChanged) {
-    if (await addFileToContents(workspaceRoot, file, contents, fileContentMap, totalTokens, maxTokens, true)) {
+    const filePath = file.split(':')[0]
+    const cachedRaw = rawMap.get(filePath)
+    if (
+      await addFileToContents(workspaceRoot, file, contents, fileContentMap, totalTokens, maxTokens, true, cachedRaw)
+    ) {
       budgetExceeded = true
       break
     }
@@ -273,12 +336,16 @@ export async function readChangedFilesWithBudget(
   let expandedFiles: string[] = []
   if (expandImports_) {
     expandedFiles = await expandImports(workspaceRoot, filesChanged, fileContentMap)
+    await prefetchMissingFiles(workspaceRoot, expandedFiles, rawMap)
+
     for (const expandedFile of expandedFiles) {
       if (totalTokens.value >= maxTokens) {
         budgetExceeded = true
         break
       }
-      if (await addExpandedFileToContents(workspaceRoot, expandedFile, contents, totalTokens, maxTokens)) {
+      const filePath = expandedFile.split(':')[0]
+      const cachedRaw = rawMap.get(filePath)
+      if (await addExpandedFileToContents(workspaceRoot, expandedFile, contents, totalTokens, maxTokens, cachedRaw)) {
         budgetExceeded = true
         break
       }
