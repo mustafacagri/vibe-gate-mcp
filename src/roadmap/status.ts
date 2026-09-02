@@ -26,27 +26,40 @@ const DEFAULT_STATUS: PhaseStatus = {
   lastUpdated: null
 }
 
-async function parseStatusFromRoadmap(workspaceRoot: string): Promise<PhaseStatus | null> {
+function parseRoadmapContent(raw: string): PhaseStatus | null {
+  const matches = [...raw.matchAll(PHASE_ID_REGEX)]
+  const lastMatch = matches[matches.length - 1]
+  if (!lastMatch) return null
+  const lastCompletedTask = lastMatch[1]
+  const top = lastCompletedTask.split('.')[0]
+  const currentPhase = Number.parseInt(top, 10)
+  return {
+    ...DEFAULT_STATUS,
+    lastCompletedTask,
+    currentPhase: Number.isNaN(currentPhase) ? 0 : currentPhase
+  }
+}
+
+export async function parseStatusFromRoadmap(workspaceRoot: string): Promise<PhaseStatus | null> {
   const paths = [PATHS.VIBE_ROADMAP, PATHS.DOCS_ROADMAP]
-  for (const rel of paths) {
-    const path = join(workspaceRoot, rel)
-    try {
-      const raw = await readFile(path, 'utf-8')
-      const matches = [...raw.matchAll(PHASE_ID_REGEX)]
-      const lastMatch = matches[matches.length - 1]
-      if (!lastMatch) continue
-      const lastCompletedTask = lastMatch[1]
-      const top = lastCompletedTask.split('.')[0]
-      const currentPhase = Number.parseInt(top, 10)
-      return {
-        ...DEFAULT_STATUS,
-        lastCompletedTask,
-        currentPhase: Number.isNaN(currentPhase) ? 0 : currentPhase
+  const results = await Promise.all(
+    paths.map(async rel => {
+      const path = join(workspaceRoot, rel)
+      try {
+        const raw = await readFile(path, 'utf-8')
+        return parseRoadmapContent(raw)
+      } catch {
+        return null
       }
-    } catch {
-      continue
+    })
+  )
+
+  for (const status of results) {
+    if (status !== null) {
+      return status
     }
   }
+
   return null
 }
 
