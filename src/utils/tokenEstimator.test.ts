@@ -76,7 +76,7 @@ describe('estimateMessages', () => {
 describe('getEffectiveContextBudget', () => {
   const providerList = Object.values(PROVIDERS) as ProviderId[]
 
-  it.each(providerList)('calculates effective context budget correctly for provider %s', (provider) => {
+  it.each(providerList)('calculates effective context budget correctly for provider %s', provider => {
     const raw = CONTEXT_WINDOWS[provider]
     const expected =
       Math.floor(raw * TOKEN_ESTIMATION.EFFECTIVE_CONTEXT_FACTOR) -
@@ -88,7 +88,7 @@ describe('getEffectiveContextBudget', () => {
     expect(result).toBeGreaterThan(0)
   })
 
-  it.each(providerList)('ensures effective budget is lower than max context budget for provider %s', (provider) => {
+  it.each(providerList)('ensures effective budget is lower than max context budget for provider %s', provider => {
     expect(getEffectiveContextBudget(provider)).toBeLessThan(getMaxContextBudget(provider))
   })
 })
@@ -96,7 +96,7 @@ describe('getEffectiveContextBudget', () => {
 describe('getMaxContextBudget', () => {
   const providerList = Object.values(PROVIDERS) as ProviderId[]
 
-  it.each(providerList)('calculates max context budget correctly for provider %s', (provider) => {
+  it.each(providerList)('calculates max context budget correctly for provider %s', provider => {
     const raw = MAX_CONTEXT_WINDOWS[provider]
     const expected = raw - TOKEN_ESTIMATION.SAFETY_MARGIN - TOKEN_ESTIMATION.RESPONSE_RESERVE
 
@@ -119,7 +119,10 @@ describe('budgetToTokens', () => {
     { budgetChars: 7, expectedTokens: 1 },
     { budgetChars: 8, expectedTokens: 2 },
     { budgetChars: 400, expectedTokens: 100 }
-  ])('converts $budgetChars budget chars to $expectedTokens tokens using Math.floor', ({ budgetChars, expectedTokens }) => {
-    expect(budgetToTokens(budgetChars)).toBe(expectedTokens)
-  })
+  ])(
+    'converts $budgetChars budget chars to $expectedTokens tokens using Math.floor',
+    ({ budgetChars, expectedTokens }) => {
+      expect(budgetToTokens(budgetChars)).toBe(expectedTokens)
+    }
+  )
 })
