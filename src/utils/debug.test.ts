@@ -15,41 +15,62 @@ describe('debugLog', () => {
     vi.restoreAllMocks()
   })
 
-  it('logs to console.error with DEBUG_LOG_PREFIX when process.env.DEBUG is set', () => {
-    process.env[ENV_KEYS.DEBUG] = 'true'
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  describe('when process.env.DEBUG is set', () => {
+    it.each([['true'], ['1'], ['debug'], ['VERBOSE'], ['false']])(
+      'logs to console.error with DEBUG_LOG_PREFIX when ENV_KEYS.DEBUG is %s',
+      envValue => {
+        process.env[ENV_KEYS.DEBUG] = envValue
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    debugLog('Test debug message')
+        debugLog('Test debug message')
 
-    expect(errorSpy).toHaveBeenCalledTimes(1)
-    expect(errorSpy).toHaveBeenCalledWith(`${DEBUG_LOG_PREFIX} Test debug message`)
+        expect(errorSpy).toHaveBeenCalledTimes(1)
+        expect(errorSpy).toHaveBeenCalledWith(`${DEBUG_LOG_PREFIX} Test debug message`)
+      }
+    )
+
+    it.each([
+      ['empty message', ''],
+      ['multiline message', 'line 1\nline 2'],
+      ['special characters message', 'Special chars: !@#$%^&*()_+-=[]{}|;:\'",.<>/?']
+    ])('correctly formats %s', (_, message) => {
+      process.env[ENV_KEYS.DEBUG] = 'true'
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      debugLog(message)
+
+      expect(errorSpy).toHaveBeenCalledTimes(1)
+      expect(errorSpy).toHaveBeenCalledWith(`${DEBUG_LOG_PREFIX} ${message}`)
+    })
+
+    it('logs multiple messages in sequence', () => {
+      process.env[ENV_KEYS.DEBUG] = 'true'
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      debugLog('First message')
+      debugLog('Second message')
+
+      expect(errorSpy).toHaveBeenCalledTimes(2)
+      expect(errorSpy).toHaveBeenNthCalledWith(1, `${DEBUG_LOG_PREFIX} First message`)
+      expect(errorSpy).toHaveBeenNthCalledWith(2, `${DEBUG_LOG_PREFIX} Second message`)
+    })
   })
 
-  it('logs to console.error when process.env.DEBUG is set to numeric value', () => {
-    process.env[ENV_KEYS.DEBUG] = '1'
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  describe('when process.env.DEBUG is falsy or unset', () => {
+    it.each([
+      ['undefined', undefined],
+      ['empty string', '']
+    ])('does not log to console.error when ENV_KEYS.DEBUG is %s', (_, envValue) => {
+      if (envValue === undefined) {
+        delete process.env[ENV_KEYS.DEBUG]
+      } else {
+        process.env[ENV_KEYS.DEBUG] = envValue
+      }
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    debugLog('Another test message')
+      debugLog('This should not be logged')
 
-    expect(errorSpy).toHaveBeenCalledTimes(1)
-    expect(errorSpy).toHaveBeenCalledWith(`${DEBUG_LOG_PREFIX} Another test message`)
-  })
-
-  it('does not log to console.error when process.env.DEBUG is undefined', () => {
-    delete process.env[ENV_KEYS.DEBUG]
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    debugLog('This should not be logged')
-
-    expect(errorSpy).not.toHaveBeenCalled()
-  })
-
-  it('does not log to console.error when process.env.DEBUG is an empty string', () => {
-    process.env[ENV_KEYS.DEBUG] = ''
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    debugLog('This should not be logged')
-
-    expect(errorSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
   })
 })
