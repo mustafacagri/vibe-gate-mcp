@@ -328,6 +328,20 @@ function validateLineNumbers(fileInfo: FileInfo | undefined, evidence: string): 
   const lineRange = extractLineRangeFromEvidence(evidence)
   if (!lineRange) return true
 
+  if (lineRange.start <= 0 || lineRange.end <= 0) {
+    debugLog(
+      `[DEBUG] validateLineNumbers: REJECTING - invalid line numbers (start: ${lineRange.start}, end: ${lineRange.end})`
+    )
+    return false
+  }
+
+  if (lineRange.start > lineRange.end) {
+    debugLog(
+      `[DEBUG] validateLineNumbers: REJECTING - start line ${lineRange.start} exceeds end line ${lineRange.end}`
+    )
+    return false
+  }
+
   if (lineRange.start > fileInfo.totalLines) {
     debugLog(
       `[DEBUG] validateLineNumbers: REJECTING - start line ${lineRange.start} exceeds total lines ${fileInfo.totalLines}`
