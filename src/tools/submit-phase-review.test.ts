@@ -221,6 +221,25 @@ IMPACT IF IGNORED: None`
     })
   })
 
+  describe('Round 1 REJECT/BLOCK behavior when priorConcerns is empty', () => {
+    it('REJECT verdict with empty priorConcerns in Round 1 returns REJECT and is not promoted to ACCEPT', async () => {
+      // Test that when priorConcerns is empty and Critic returns REJECT,
+      // the handler returns REJECT and does not vacuous-ACCEPT.
+      const llmResponse = `VERDICT: REJECT
+
+CONCERN: DRY-01 | Duplicated code found
+SEVERITY: BLOCKING
+LOCATION:
+  - api/test.ts (line 10)
+FIX REQUIRED: Refactor duplicated code`
+
+      const concerns = parseConcernsFromResponse(llmResponse)
+      expect(concerns).toHaveLength(1)
+      const result = buildCriticResponse(CRITIC_VERDICTS.REJECT, llmResponse, 150, concerns, [])
+      expect(result.verdict).toBe(CRITIC_VERDICTS.REJECT)
+    })
+  })
+
   describe('SEVERITY parsing E2E', () => {
     it('BLOCKING severity parsed correctly in REJECT flow', () => {
       const llmResponse = `VERDICT: REJECT
