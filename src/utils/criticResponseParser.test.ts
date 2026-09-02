@@ -9,7 +9,8 @@ import {
   parseRequestsFromResponse,
   hasConcernBlocks,
   hasVerificationBlocks,
-  hasRequestBlocks
+  hasRequestBlocks,
+  filterConcernsBySemanticDiff
 } from '@/utils/criticResponseParser'
 import { SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 
@@ -329,6 +330,83 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+  })
+
+  describe('filterConcernsBySemanticDiff', () => {
+    const sampleSemanticDiff = `FILE: src/example.ts
+CONTENT:
+function helloWorld() {
+  console.log('Hello world')
+  return true
+}
+export function computeTotal(items: number[]) {
+  return items.reduce((acc, item) => acc + item, 0)
+}
+`
+
+    it('returns empty array when concerns is empty', () => {
+      expect(filterConcernsBySemanticDiff([], sampleSemanticDiff)).toEqual([])
+    })
+
+    it('returns all concerns unchanged if semanticDiff is empty', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicate code',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/example.ts:1-3',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(filterConcernsBySemanticDiff(concerns, '')).toEqual(concerns)
+    })
+
+    it('rejects concerns citing a file not present in semanticDiff', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'helloWorld function issue',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/missing.ts:1-3',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, sampleSemanticDiff)
+      expect(result).toHaveLength(0)
+    })
+
+    it('rejects concerns citing line numbers exceeding file total line count', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'helloWorld function issue',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/example.ts:265-267',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, sampleSemanticDiff)
+      expect(result).toHaveLength(0)
+    })
+
+    it('keeps concerns citing valid line numbers and matching semantic content', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'helloWorld console log check',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/example.ts:1-4',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, sampleSemanticDiff)
+      expect(result).toHaveLength(1)
+      expect(result[0].ruleId).toBe('DRY-01')
     })
   })
 })
