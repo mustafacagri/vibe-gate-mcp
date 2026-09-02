@@ -21,6 +21,9 @@ export interface FileRequest {
   reason?: string
 }
 
+/** Maximum line length processed by regex response parsers to prevent ReDoS / CPU exhaustion */
+export const MAX_PARSE_LINE_LENGTH = 2000
+
 /**
  * Extract structured Critic verdict from the last `VERDICT: <token>` line only.
  * Returns null when absent → caller maps to INSUFFICIENT_REVIEW (fail-closed).
@@ -63,7 +66,9 @@ export function parseConcernsFromResponse(response: string): Concern[] {
   const concernRegex = /^CONCERN:\s*(\S+)\s*\|\s*(.+)/i
 
   for (let i = 0; i < lines.length; i++) {
-    const match = concernRegex.exec(lines[i])
+    const line = lines[i]
+    if (line.length > MAX_PARSE_LINE_LENGTH) continue
+    const match = concernRegex.exec(line)
     if (match) {
       const concern = parseConcernBlock(lines, i, match)
       if (concern) concerns.push(concern)
@@ -96,6 +101,7 @@ function parseConcernBlock(lines: string[], startIdx: number, headerMatch: RegEx
 
   for (let j = startIdx + 1; j < lines.length; j++) {
     const l = lines[j]
+    if (l.length > MAX_PARSE_LINE_LENGTH) continue
     if (l.startsWith('CONCERN:') || l.startsWith('VERIFIED:') || l.startsWith('NOT_VERIFIED:')) break
 
     const locMatch = parseLocationLine(l)
@@ -125,6 +131,7 @@ function parseConcernBlock(lines: string[], startIdx: number, headerMatch: RegEx
 }
 
 function parseLocationLine(line: string): { file: string; lines: string } | null {
+  if (line.length > MAX_PARSE_LINE_LENGTH) return null
   const trimmed = line.trim()
   if (!trimmed.startsWith('-')) return null
 
@@ -162,6 +169,7 @@ function parseCompactConcerns(response: string): Concern[] {
   const concernStart = /^CONCERN:\s*(\S+)\s*\|\s*/i
 
   for (const line of lines) {
+    if (line.length > MAX_PARSE_LINE_LENGTH) continue
     const match = concernStart.exec(line)
     if (!match) continue
 
@@ -219,6 +227,7 @@ export function parseVerificationsFromResponse(response: string, existingConcern
   const lines = response.split('\n')
 
   for (const line of lines) {
+    if (line.length > MAX_PARSE_LINE_LENGTH) continue
     const trimmed = line.trim()
     const isVerified = trimmed.startsWith('VERIFIED:')
     const isNotVerified = trimmed.startsWith('NOT_VERIFIED:')
@@ -251,15 +260,19 @@ function parseFileRequestPart(part: string): FileRequest | null {
 
 export function parseRequestsFromResponse(response: string): FileRequest[] {
   const requests: FileRequest[] = []
-  const requestRegex = /\bREQUEST:\s*(.+)/gi
-  let match: RegExpExecArray | null
+  const lines = response.split('\n')
+  const requestRegex = /\bREQUEST:\s*(.+)/i
 
-  while ((match = requestRegex.exec(response)) !== null) {
-    const afterColon = match[1].trim()
-    const parts = afterColon.split(',').map(p => p.trim())
-    for (const part of parts) {
-      const req = parseFileRequestPart(part)
-      if (req) requests.push(req)
+  for (const line of lines) {
+    if (line.length > MAX_PARSE_LINE_LENGTH) continue
+    const match = requestRegex.exec(line)
+    if (match) {
+      const afterColon = match[1].trim()
+      const parts = afterColon.split(',').map(p => p.trim())
+      for (const part of parts) {
+        const req = parseFileRequestPart(part)
+        if (req) requests.push(req)
+      }
     }
   }
 

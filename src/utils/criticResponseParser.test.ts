@@ -173,6 +173,22 @@ EXAMPLE:
       expect(concerns[0].ruleId).toBe('DRY-02')
       expect(concerns[0].description).toContain('Replace with STATUS_CODES constant')
     })
+
+    it('handles excessively long lines safely without hanging (ReDoS prevention)', () => {
+      const longString = 'A'.repeat(50000)
+      const response = `CONCERN: SEC-01 | Test long line
+${longString}
+LOCATION:
+  - src/utils.ts (lines 1-5)
+FIX REQUIRED: Fix issue`
+      const startTime = Date.now()
+      const concerns = parseConcernsFromResponse(response)
+      const duration = Date.now() - startTime
+
+      expect(duration).toBeLessThan(100)
+      expect(concerns).toHaveLength(1)
+      expect(concerns[0].ruleId).toBe('SEC-01')
+    })
   })
 
   describe('parseVerificationsFromResponse', () => {
@@ -329,6 +345,18 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+
+    it('handles long lines gracefully in request parsing', () => {
+      const longLine = 'REQUEST: ' + 'A'.repeat(100000)
+      const response = `${longLine}\nREQUEST: src/valid.ts:1-10`
+      const startTime = Date.now()
+      const requests = parseRequestsFromResponse(response)
+      const duration = Date.now() - startTime
+
+      expect(duration).toBeLessThan(100)
+      expect(requests).toHaveLength(1)
+      expect(requests[0].filePath).toBe('src/valid.ts')
     })
   })
 })
