@@ -21,9 +21,6 @@ export interface FileRequest {
   reason?: string
 }
 
-/** Maximum line length processed by regex response parsers to prevent ReDoS / CPU exhaustion */
-export const MAX_PARSE_LINE_LENGTH = 2000
-
 /**
  * Extract structured Critic verdict from the last `VERDICT: <token>` line only.
  * Returns null when absent → caller maps to INSUFFICIENT_REVIEW (fail-closed).
@@ -60,15 +57,29 @@ export function hasStructuredProseMismatch(text: string, structured: Verdict | n
   return false
 }
 
+interface ConcernHeaderMatch {
+  ruleId: string
+  title: string
+}
+
+function parseConcernHeaderLine(line: string): ConcernHeaderMatch | null {
+  const trimmed = line.trim()
+  if (!trimmed.toUpperCase().startsWith('CONCERN:')) return null
+  const afterColon = trimmed.slice(8).trim()
+  const pipeIdx = afterColon.indexOf('|')
+  if (pipeIdx === -1) return null
+  const ruleId = afterColon.slice(0, pipeIdx).trim()
+  const title = afterColon.slice(pipeIdx + 1).trim()
+  if (!ruleId || ruleId.includes(' ') || ruleId.includes('\t') || !title) return null
+  return { ruleId, title }
+}
+
 export function parseConcernsFromResponse(response: string): Concern[] {
   const concerns: Concern[] = []
   const lines = response.split('\n')
-  const concernRegex = /^CONCERN:\s*(\S+)\s*\|\s*(.+)/i
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.length > MAX_PARSE_LINE_LENGTH) continue
-    const match = concernRegex.exec(line)
+    const match = parseConcernHeaderLine(lines[i])
     if (match) {
       const concern = parseConcernBlock(lines, i, match)
       if (concern) concerns.push(concern)
@@ -91,9 +102,9 @@ function parseSeverityLine(line: string, currentSeverity: Severity): Severity {
   return currentSeverity
 }
 
-function parseConcernBlock(lines: string[], startIdx: number, headerMatch: RegExpExecArray): Concern | null {
-  const ruleId = headerMatch[1].trim()
-  const title = headerMatch[2].trim()
+function parseConcernBlock(lines: string[], startIdx: number, headerMatch: ConcernHeaderMatch): Concern | null {
+  const ruleId = headerMatch.ruleId
+  const title = headerMatch.title
   let file = 'unknown'
   let linesStr = 'unknown'
   let fixRequired = ''
@@ -101,8 +112,14 @@ function parseConcernBlock(lines: string[], startIdx: number, headerMatch: RegEx
 
   for (let j = startIdx + 1; j < lines.length; j++) {
     const l = lines[j]
-    if (l.length > MAX_PARSE_LINE_LENGTH) continue
-    if (l.startsWith('CONCERN:') || l.startsWith('VERIFIED:') || l.startsWith('NOT_VERIFIED:')) break
+    const trimmedUpper = l.trim().toUpperCase()
+    if (
+      trimmedUpper.startsWith('CONCERN:') ||
+      trimmedUpper.startsWith('VERIFIED:') ||
+      trimmedUpper.startsWith('NOT_VERIFIED:')
+    ) {
+      break
+    }
 
     const locMatch = parseLocationLine(l)
     if (locMatch) {
@@ -131,7 +148,6 @@ function parseConcernBlock(lines: string[], startIdx: number, headerMatch: RegEx
 }
 
 function parseLocationLine(line: string): { file: string; lines: string } | null {
-  if (line.length > MAX_PARSE_LINE_LENGTH) return null
   const trimmed = line.trim()
   if (!trimmed.startsWith('-')) return null
 
@@ -166,21 +182,29 @@ function parseLocationLine(line: string): { file: string; lines: string } | null
 function parseCompactConcerns(response: string): Concern[] {
   const concerns: Concern[] = []
   const lines = response.split('\n')
-  const concernStart = /^CONCERN:\s*(\S+)\s*\|\s*/i
 
   for (const line of lines) {
-    if (line.length > MAX_PARSE_LINE_LENGTH) continue
-    const match = concernStart.exec(line)
-    if (!match) continue
-
-    const ruleId = match[1].trim()
-    const afterHeader = line.slice(match[0].length)
-
-    const pipeIdx = afterHeader.lastIndexOf('| EVIDENCE:')
+    const trimmed = line.trim()
+    if (!trimmed.toUpperCase().startsWith('CONCERN:')) continue
+    const afterColon = trimmed.slice(8).trim()
+    const pipeIdx = afterColon.indexOf('|')
     if (pipeIdx === -1) continue
 
-    const description = afterHeader.slice(0, pipeIdx).trim()
-    const evidencePart = afterHeader.slice(pipeIdx + 11).trim()
+    const ruleId = afterColon.slice(0, pipeIdx).trim()
+    if (!ruleId || ruleId.includes(' ') || ruleId.includes('\t')) continue
+
+    const afterHeader = afterColon.slice(pipeIdx + 1)
+    let evidencePipeIdx = afterHeader.lastIndexOf('| EVIDENCE:')
+    const markerLength = 11
+
+    if (evidencePipeIdx === -1) {
+      const upperHeader = afterHeader.toUpperCase()
+      evidencePipeIdx = upperHeader.lastIndexOf('| EVIDENCE:')
+      if (evidencePipeIdx === -1) continue
+    }
+
+    const description = afterHeader.slice(0, evidencePipeIdx).trim()
+    const evidencePart = afterHeader.slice(evidencePipeIdx + markerLength).trim()
 
     concerns.push({
       ruleId,
@@ -227,7 +251,6 @@ export function parseVerificationsFromResponse(response: string, existingConcern
   const lines = response.split('\n')
 
   for (const line of lines) {
-    if (line.length > MAX_PARSE_LINE_LENGTH) continue
     const trimmed = line.trim()
     const isVerified = trimmed.startsWith('VERIFIED:')
     const isNotVerified = trimmed.startsWith('NOT_VERIFIED:')
@@ -261,18 +284,24 @@ function parseFileRequestPart(part: string): FileRequest | null {
 export function parseRequestsFromResponse(response: string): FileRequest[] {
   const requests: FileRequest[] = []
   const lines = response.split('\n')
-  const requestRegex = /\bREQUEST:\s*(.+)/i
 
   for (const line of lines) {
-    if (line.length > MAX_PARSE_LINE_LENGTH) continue
-    const match = requestRegex.exec(line)
-    if (match) {
-      const afterColon = match[1].trim()
-      const parts = afterColon.split(',').map(p => p.trim())
-      for (const part of parts) {
-        const req = parseFileRequestPart(part)
-        if (req) requests.push(req)
-      }
+    const trimmed = line.trim()
+    const reqIdx = trimmed.toUpperCase().indexOf('REQUEST:')
+    if (reqIdx === -1) continue
+
+    if (reqIdx > 0) {
+      const charBefore = trimmed[reqIdx - 1]
+      if (/\w/.test(charBefore)) continue
+    }
+
+    const afterColon = trimmed.slice(reqIdx + 8).trim()
+    if (!afterColon) continue
+
+    const parts = afterColon.split(',').map(p => p.trim())
+    for (const part of parts) {
+      const req = parseFileRequestPart(part)
+      if (req) requests.push(req)
     }
   }
 
