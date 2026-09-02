@@ -173,9 +173,10 @@ function gatherExpandedImports(
 export async function expandImports(
   workspaceRoot: string,
   files: string[],
-  fileContents: Map<string, string>
+  fileContents: Map<string, string>,
+  enabled: boolean = CONTEXT_LIMITS.IMPORT_EXPANSION_ENABLED
 ): Promise<string[]> {
-  if (!CONTEXT_LIMITS.IMPORT_EXPANSION_ENABLED) return []
+  if (!enabled) return []
   const fileDir = dirname(files[0] || '.')
   return gatherExpandedImports(workspaceRoot, files, fileContents, fileDir)
 }
@@ -229,29 +230,6 @@ async function addFileToContents(
   return true
 }
 
-async function addExpandedFileToContents(
-  workspaceRoot: string,
-  expandedFile: string,
-  contents: FileContent[],
-  totalTokens: { value: number },
-  maxTokens: number
-): Promise<boolean> {
-  if (totalTokens.value >= maxTokens) return true
-
-  const expandedContent = await readChangedFileContent(
-    workspaceRoot,
-    expandedFile,
-    CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK
-  )
-  const expandedTokens = estimateTokens(expandedContent.content)
-  if (totalTokens.value + expandedTokens <= maxTokens) {
-    contents.push(expandedContent)
-    totalTokens.value += expandedTokens
-    return false
-  }
-  return true
-}
-
 export async function readChangedFilesWithBudget(
   workspaceRoot: string,
   filesChanged: string[],
@@ -272,13 +250,21 @@ export async function readChangedFilesWithBudget(
 
   let expandedFiles: string[] = []
   if (expandImports_) {
-    expandedFiles = await expandImports(workspaceRoot, filesChanged, fileContentMap)
-    for (const expandedFile of expandedFiles) {
+    expandedFiles = await expandImports(workspaceRoot, filesChanged, fileContentMap, expandImports_)
+    const expandedContents = await Promise.all(
+      expandedFiles.map(file => readChangedFileContent(workspaceRoot, file, CONTEXT_LIMITS.TRUNCATED_LINES_FALLBACK))
+    )
+
+    for (const expandedContent of expandedContents) {
       if (totalTokens.value >= maxTokens) {
         budgetExceeded = true
         break
       }
-      if (await addExpandedFileToContents(workspaceRoot, expandedFile, contents, totalTokens, maxTokens)) {
+      const expandedTokens = estimateTokens(expandedContent.content)
+      if (totalTokens.value + expandedTokens <= maxTokens) {
+        contents.push(expandedContent)
+        totalTokens.value += expandedTokens
+      } else {
         budgetExceeded = true
         break
       }
