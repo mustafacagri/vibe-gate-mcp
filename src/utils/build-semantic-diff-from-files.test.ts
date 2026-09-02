@@ -65,4 +65,31 @@ describe('buildSemanticDiffFromSourceFiles', () => {
     if (!result.ok) expect(result.code).toBe('FILE_NOT_FOUND')
     await rm(root, { recursive: true, force: true })
   })
+
+  it('rejects empty file content', async () => {
+    const root = join(tmpdir(), `vibe-empty-${Date.now()}`)
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'empty.ts'), '   \n', 'utf8')
+    const result = await buildSemanticDiffFromSourceFiles(root, ['empty.ts'])
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('EMPTY_FILE_CONTENT')
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('rejects total size exceeding limit', async () => {
+    const root = join(tmpdir(), `vibe-total-${Date.now()}`)
+    await mkdir(root, { recursive: true })
+    // MAX_BYTES_PER_FILE is 1MB, MAX_TOTAL_BYTES is 5MB. Write 6 files of 900KB each.
+    const chunk = 'a'.repeat(900 * 1024)
+    const files: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const name = `f${i}.txt`
+      files.push(name)
+      await writeFile(join(root, name), chunk, 'utf8')
+    }
+    const result = await buildSemanticDiffFromSourceFiles(root, files)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('TOTAL_TOO_LARGE')
+    await rm(root, { recursive: true, force: true })
+  })
 })
