@@ -3,11 +3,65 @@
  * Tests the complete flow from LLM response string to parsed structure.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseConcernsFromResponse, parseVerificationsFromResponse } from '@/utils/criticResponseParser'
 import { buildCriticResponse } from '@/utils/responseBuilder'
 import { CRITIC_VERDICTS, SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 import type { Concern } from '@/conflict-loop/types'
+
+vi.mock('@/config', () => ({
+  loadConfig: vi.fn().mockReturnValue({ criticPersona: 'strict' }),
+  getEffectiveModel: vi.fn().mockReturnValue('mock-model')
+}))
+
+vi.mock('@/llm', () => ({
+  createLLMProvider: vi.fn().mockReturnValue({
+    complete: vi.fn().mockResolvedValue({
+      content: 'VERDICT: ACCEPT\n\nAll clear.',
+      usage: { promptTokens: 10, completionTokens: 10 }
+    })
+  })
+}))
+
+vi.mock('@/workspace', () => ({
+  getWorkspaceRoot: () => '/mock/workspace'
+}))
+
+vi.mock('@/conflict-loop/session', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/conflict-loop/session')>()
+  return {
+    ...actual,
+    clearSession: vi.fn().mockResolvedValue(undefined),
+    readSession: vi.fn().mockResolvedValue(null),
+    writeSession: vi.fn().mockResolvedValue(undefined)
+  }
+})
+
+vi.mock('@/roadmap', () => ({
+  getStatus: vi.fn().mockResolvedValue({}),
+  updatePhaseOnAccept: vi.fn().mockResolvedValue(undefined),
+  updateConflictCount: vi.fn().mockResolvedValue(undefined)
+}))
+
+vi.mock('@/rules/loader', () => ({
+  loadRules: vi.fn().mockResolvedValue([]),
+  formatRulesForPrompt: vi.fn().mockReturnValue('')
+}))
+
+vi.mock('@/preferences/index', () => ({
+  readPreferencesLog: vi.fn().mockResolvedValue('')
+}))
+
+vi.mock('@/summarizer/extract-project-blueprint', () => ({
+  extractProjectBlueprint: vi.fn().mockResolvedValue({ framework: 'unknown', structures: [] })
+}))
+
+vi.mock('@/summarizer/parse-dependency-list', () => ({
+  parseDependencyListFromPackageJson: vi.fn().mockResolvedValue({ dependencies: [], devDependencies: [] })
+}))
+
+import { clearSession, readSession } from '@/conflict-loop/session'
+import { handleSubmitPhaseReview } from '@/tools/submit-phase-review'
 
 describe('E2E: LLM Response → Parsed → Built', () => {
   describe('CONCERNS_ADDRESSED flow', () => {
@@ -298,6 +352,68 @@ FIX REQUIRED: Extract to utility`
 
       expect(concerns).toHaveLength(1)
       expect(concerns[0].severity).toBe(SEVERITY.WARNING)
+    })
+  })
+
+  describe('Session persistence across rounds in handleSubmitPhaseReview', () => {
+    it('clears session when round is 1 (fresh start)', async () => {
+      vi.mocked(clearSession).mockClear()
+
+      await handleSubmitPhaseReview({
+        phaseId: '1.1.1',
+        report: 'Phase complete with instant fixes',
+        semanticDiff: 'FILE: src/index.ts\nCONTENT:\nconsole.log("hello")',
+        round: 1
+      })
+
+      expect(clearSession).toHaveBeenCalledWith('/mock/workspace')
+    })
+
+    it('clears session when round is omitted (defaults to 1)', async () => {
+      vi.mocked(clearSession).mockClear()
+
+      await handleSubmitPhaseReview({
+        phaseId: '1.1.1',
+        report: 'Phase complete with instant fixes',
+        semanticDiff: 'FILE: src/index.ts\nCONTENT:\nconsole.log("hello")'
+      })
+
+      expect(clearSession).toHaveBeenCalledWith('/mock/workspace')
+    })
+
+    it('persists session across rounds (does NOT clear session when round > 1)', async () => {
+      vi.mocked(clearSession).mockClear()
+      vi.mocked(readSession).mockResolvedValue({
+        phaseId: '1.1.1',
+        round: 1,
+        concerns: [
+          {
+            ruleId: 'DRY-01',
+            description: 'Duplication',
+            severity: SEVERITY.BLOCKING,
+            evidence: 'src/index.ts:1',
+            verified: false,
+            reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+          }
+        ],
+        history: [
+          {
+            round: 1,
+            report: 'Initial submission',
+            verdict: CRITIC_VERDICTS.REJECT,
+            criticResponse: 'VERDICT: REJECT\nCONCERN: DRY-01 | Duplication'
+          }
+        ]
+      })
+
+      await handleSubmitPhaseReview({
+        phaseId: '1.1.1',
+        report: 'Addressed feedback',
+        semanticDiff: 'FILE: src/index.ts\nCONTENT:\nconsole.log("hello")',
+        round: 2
+      })
+
+      expect(clearSession).not.toHaveBeenCalled()
     })
   })
 })
