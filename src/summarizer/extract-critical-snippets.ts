@@ -11,37 +11,69 @@ function matchesPattern(pathLower: string, patterns: readonly string[]): boolean
   return patterns.some(p => pathLower.includes(p))
 }
 
-async function findMatchingFiles(root: string, dir: string, patterns: readonly string[], acc: string[]): Promise<void> {
+interface CriticalAccumulator {
+  auth: string[]
+  db: string[]
+  api: string[]
+}
+
+function matchAndAccumulate(rel: string, acc: CriticalAccumulator): void {
+  const relLower = rel.toLowerCase()
+  if (matchesPattern(relLower, CRITICAL_PATTERNS.AUTH)) {
+    acc.auth.push(rel)
+  }
+  if (matchesPattern(relLower, CRITICAL_PATTERNS.DB)) {
+    acc.db.push(rel)
+  }
+  if (matchesPattern(relLower, CRITICAL_PATTERNS.API)) {
+    acc.api.push(rel)
+  }
+}
+
+async function scanDirectory(root: string, dir: string, acc: CriticalAccumulator): Promise<void> {
   const fullPath = join(root, dir)
   try {
     const entries = await readdir(fullPath, { withFileTypes: true })
+    const tasks: Promise<void>[] = []
+
     for (const e of entries) {
       const rel = dir ? `${dir}/${e.name}` : e.name
       if (e.isDirectory()) {
-        if (!SCAN_IGNORE_SET.has(e.name)) await findMatchingFiles(root, rel, patterns, acc)
-      } else if (e.isFile() && matchesPattern(rel.toLowerCase(), patterns)) {
-        acc.push(rel)
+        if (!SCAN_IGNORE_SET.has(e.name)) {
+          tasks.push(scanDirectory(root, rel, acc))
+        }
+      } else if (e.isFile()) {
+        matchAndAccumulate(rel, acc)
       }
     }
+
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
+    }
   } catch {
-    // ignore
+    // ignore unreadable directories
   }
 }
 
 export async function extractCriticalSnippets(workspaceRoot: string): Promise<CriticalSnippets> {
-  const authFiles: string[] = []
-  const dbFiles: string[] = []
-  const apiFiles: string[] = []
+  const acc: CriticalAccumulator = {
+    auth: [],
+    db: [],
+    api: []
+  }
 
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.AUTH, authFiles)
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.DB, dbFiles)
-  await findMatchingFiles(workspaceRoot, '', CRITICAL_PATTERNS.API, apiFiles)
+  await scanDirectory(workspaceRoot, '', acc)
+
+  const sortFn = (a: string, b: string) => a.localeCompare(b)
+  acc.auth.sort(sortFn)
+  acc.db.sort(sortFn)
+  acc.api.sort(sortFn)
 
   const format = (paths: string[]): string[] => paths.slice(0, MAX_CRITICAL_FILES_PER_CATEGORY)
 
   return {
-    auth: format(authFiles),
-    db: format(dbFiles),
-    api: format(apiFiles)
+    auth: format(acc.auth),
+    db: format(acc.db),
+    api: format(acc.api)
   }
 }
