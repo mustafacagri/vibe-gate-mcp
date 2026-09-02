@@ -320,11 +320,10 @@ interface CriticReviewResult {
 
 function determineVerdict(
   parsedVerdict: string | null,
-  _responseContent: string,
   completionTokens: number
 ): { verdict: string; insufficientReview: boolean } {
   // SECURITY FIX: Only use regex-parsed verdict.
-  // The verdict must come from the structured response field to prevent prompt injection bypass.
+  // The verdict must come from the structured response field to prevent prompt injection bypass,
   // where injecting "ACCEPT" anywhere in user content would override the real verdict.
   const finalVerdict = parsedVerdict
 
@@ -445,7 +444,7 @@ async function runCriticReview(
 
   const parsedVerdict = parseVerdictFromResponse(response.content)
   const completionTokens = response.usage?.completionTokens ?? 0
-  const determined = determineVerdict(parsedVerdict, response.content, completionTokens)
+  const determined = determineVerdict(parsedVerdict, completionTokens)
   const { verdict, insufficientReview, structuredProseMismatch } = applyStructuredProseMismatchGate(
     round,
     response.content,
