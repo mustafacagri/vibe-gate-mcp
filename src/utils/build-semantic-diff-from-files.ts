@@ -68,11 +68,11 @@ function validateFilesArray(paths: string[]): BuildSemanticDiffFromFilesResult |
   return null
 }
 
-type ProcessSourceFileResult =
-  | { ok: true; relativePath: string; size: number; content: string }
+type FileMetaResult =
+  | { ok: true; relativePath: string; absolutePath: string; size: number }
   | { ok: false; result: BuildSemanticDiffFromFilesResult }
 
-async function processSourceFile(workspaceRoot: string, relativePath: string): Promise<ProcessSourceFileResult> {
+async function checkFileMeta(workspaceRoot: string, relativePath: string): Promise<FileMetaResult> {
   const pathResult = resolveSafePathInWorkspace(workspaceRoot, relativePath, WORKSPACE_PATH_KIND.SOURCE_FILE)
   if (!pathResult.ok) {
     return { ok: false, result: mapPathError(pathResult.code, pathResult.message) }
@@ -130,6 +130,13 @@ async function processSourceFile(workspaceRoot: string, relativePath: string): P
     return { ok: false, result: mapPathError(canonicalResult.value.code, canonicalResult.value.message) }
   }
 
+  return { ok: true, relativePath, absolutePath, size: st.size }
+}
+
+async function readFileContent(
+  absolutePath: string,
+  relativePath: string
+): Promise<{ ok: true; content: string } | { ok: false; result: BuildSemanticDiffFromFilesResult }> {
   let content: string
   try {
     content = await readFile(absolutePath, 'utf8')
@@ -153,8 +160,7 @@ async function processSourceFile(workspaceRoot: string, relativePath: string): P
       }
     }
   }
-
-  return { ok: true, relativePath, size: st.size, content }
+  return { ok: true, content }
 }
 
 export async function buildSemanticDiffFromSourceFiles(
@@ -165,16 +171,16 @@ export async function buildSemanticDiffFromSourceFiles(
   const arrayError = validateFilesArray(paths)
   if (arrayError) return arrayError
 
-  const processed = await Promise.all(paths.map(relativePath => processSourceFile(workspaceRoot, relativePath)))
+  // Stage 1: Lightweight metadata checks (stat, canonical path) for all files
+  const metaResults = await Promise.all(paths.map(relativePath => checkFileMeta(workspaceRoot, relativePath)))
 
-  const blocks: string[] = []
-  const filesLoaded: string[] = []
   let totalBytes = 0
+  const validFiles: Array<{ relativePath: string; absolutePath: string }> = []
 
-  for (const item of processed) {
-    if (!item.ok) return item.result
+  for (const meta of metaResults) {
+    if (!meta.ok) return meta.result
 
-    totalBytes += item.size
+    totalBytes += meta.size
     if (totalBytes > SEMANTIC_DIFF_SOURCE_FILES.MAX_TOTAL_BYTES) {
       return {
         ok: false,
@@ -183,8 +189,22 @@ export async function buildSemanticDiffFromSourceFiles(
       }
     }
 
-    blocks.push(formatFileBlock(item.relativePath, item.content))
-    filesLoaded.push(item.relativePath)
+    validFiles.push({ relativePath: meta.relativePath, absolutePath: meta.absolutePath })
+  }
+
+  // Stage 2: Read file contents concurrently ONLY after ALL metadata & aggregate size checks pass
+  const readResults = await Promise.all(validFiles.map(file => readFileContent(file.absolutePath, file.relativePath)))
+
+  const blocks: string[] = []
+  const filesLoaded: string[] = []
+
+  for (let i = 0; i < readResults.length; i++) {
+    const read = readResults[i]
+    if (!read.ok) return read.result
+
+    const file = validFiles[i]
+    blocks.push(formatFileBlock(file.relativePath, read.content))
+    filesLoaded.push(file.relativePath)
   }
 
   return {
