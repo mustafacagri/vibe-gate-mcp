@@ -9,7 +9,8 @@ import {
   parseRequestsFromResponse,
   hasConcernBlocks,
   hasVerificationBlocks,
-  hasRequestBlocks
+  hasRequestBlocks,
+  filterConcernsBySemanticDiff
 } from '@/utils/criticResponseParser'
 import { SEVERITY, CONCERN_REVIEW_STATUS } from '@/constants'
 
@@ -329,6 +330,99 @@ REQUEST: src/file2.ts`
       expect(requests).toHaveLength(2)
       expect(requests[0].filePath).toBe('src/file1.ts')
       expect(requests[1].filePath).toBe('src/file2.ts')
+    })
+  })
+
+  describe('filterConcernsBySemanticDiff', () => {
+    const semanticDiff = `
+FILE: src/utils/helper.ts
+CONTENT:
+import { sum } from './math'
+export function calculateTotal(items: number[]): number {
+  return items.reduce((acc, curr) => acc + curr, 0)
+}
+export function formatCurrency(amount: number): string {
+  return '$' + amount.toFixed(2)
+}
+`
+
+    it('returns empty array when concerns array is empty', () => {
+      expect(filterConcernsBySemanticDiff([], semanticDiff)).toHaveLength(0)
+    })
+
+    it('returns all concerns when semanticDiff is empty', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicated logic',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/nonexistent.ts:10',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      expect(filterConcernsBySemanticDiff(concerns, '')).toEqual(concerns)
+    })
+
+    it('keeps concern citing a file present in semanticDiff with valid line numbers and keywords', () => {
+      const concerns = [
+        {
+          ruleId: 'COMPLEX-01',
+          description: 'High complexity in calculateTotal function reduce',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:2-4',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(result).toHaveLength(1)
+      expect(result[0].ruleId).toBe('COMPLEX-01')
+    })
+
+    it('filters out concerns citing files NOT in semanticDiff', () => {
+      const concerns = [
+        {
+          ruleId: 'SEC-01',
+          description: 'SQL injection vulnerability in query builder',
+          severity: SEVERITY.CRITICAL,
+          evidence: 'src/db/users.ts:15-20',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(result).toHaveLength(0)
+    })
+
+    it('filters out concerns citing valid files but with line numbers exceeding file total lines', () => {
+      const concerns = [
+        {
+          ruleId: 'DRY-01',
+          description: 'Duplicated calculation in formatCurrency function',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:50-55',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(result).toHaveLength(0)
+    })
+
+    it('filters out concerns when function identifier cited in description is missing from content', () => {
+      const concerns = [
+        {
+          ruleId: 'NAMES-01',
+          description: 'Bad identifier missingFunction in helper file',
+          severity: SEVERITY.WARNING,
+          evidence: 'src/utils/helper.ts:3-5',
+          verified: false,
+          reviewStatus: CONCERN_REVIEW_STATUS.PENDING
+        }
+      ]
+      const result = filterConcernsBySemanticDiff(concerns, semanticDiff)
+      expect(result).toHaveLength(0)
     })
   })
 })
