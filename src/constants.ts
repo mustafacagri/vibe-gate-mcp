@@ -139,6 +139,10 @@ export const OPENCODE_GO_ENDPOINT_ROUTING: ReadonlyArray<{
   prefixes: readonly string[]
 }> = [
   {
+    kind: OPENCODE_ENDPOINT_KINDS.RESPONSES,
+    prefixes: [OPENCODE_MODEL_FAMILIES.GPT]
+  },
+  {
     kind: OPENCODE_ENDPOINT_KINDS.ANTHROPIC,
     prefixes: [OPENCODE_MODEL_FAMILIES.MINIMAX, OPENCODE_MODEL_FAMILIES.QWEN]
   }
@@ -180,11 +184,13 @@ export const OPENCODE_GO = {
   BASE_URL: 'https://opencode.ai/zen/go/v1',
   ANTHROPIC_BASE_URL: 'https://opencode.ai/zen/go',
   PATHS: {
+    RESPONSES: 'responses',
     MODELS: 'models'
   }
 } as const
 
 export const OPENCODE_GO_URLS = {
+  RESPONSES: `${OPENCODE_GO.BASE_URL}/${OPENCODE_GO.PATHS.RESPONSES}`,
   MODELS_LIST: `${OPENCODE_GO.BASE_URL}/${OPENCODE_GO.PATHS.MODELS}`
 } as const
 

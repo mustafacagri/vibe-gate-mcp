@@ -66,6 +66,38 @@ describe('createOpenCodeProvider', () => {
         'OpenCode Zen responses API failed (500): Internal Server Error'
       )
     })
+
+    it('calls Go responses URL when plan is Go', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          output: [
+            {
+              type: 'message',
+              content: [{ type: 'output_text', text: 'Hello from OpenCode Go Responses' }]
+            }
+          ],
+          usage: {
+            input_tokens: 5,
+            output_tokens: 15
+          }
+        })
+      })
+
+      const provider = createOpenCodeProvider('test-key', 'gpt-5.6-luna', OPENCODE_PLANS.GO)
+      const response = await provider.complete([{ role: 'user', content: 'Hi' }])
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toBe('https://opencode.ai/zen/go/v1/responses')
+      expect(response).toEqual({
+        content: 'Hello from OpenCode Go Responses',
+        usage: {
+          promptTokens: 5,
+          completionTokens: 15
+        }
+      })
+    })
   })
 
   describe('GEMINI endpoint (Gemini models)', () => {

@@ -10,6 +10,7 @@ import OpenAI from 'openai'
 import {
   LLM_MAX_TOKENS,
   OPENCODE_FETCH_TIMEOUT_MS,
+  OPENCODE_GO_URLS,
   OPENCODE_PLANS,
   OPENCODE_ZEN_URLS,
   type OpenCodePlanId
@@ -148,8 +149,14 @@ async function completeViaChat(
   return { content, usage }
 }
 
-async function completeViaResponses(apiKey: string, model: string, messages: LLMMessage[]): Promise<LLMResponse> {
-  const response = await fetch(OPENCODE_ZEN_URLS.RESPONSES, {
+async function completeViaResponses(
+  apiKey: string,
+  model: string,
+  messages: LLMMessage[],
+  plan: OpenCodePlanId = OPENCODE_PLANS.ZEN
+): Promise<LLMResponse> {
+  const url = plan === OPENCODE_PLANS.GO ? OPENCODE_GO_URLS.RESPONSES : OPENCODE_ZEN_URLS.RESPONSES
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -165,7 +172,8 @@ async function completeViaResponses(apiKey: string, model: string, messages: LLM
 
   if (!response.ok) {
     const errorBody = await response.text()
-    throw new Error(`OpenCode Zen responses API failed (${response.status}): ${errorBody}`)
+    const planLabel = plan === OPENCODE_PLANS.GO ? 'Go' : 'Zen'
+    throw new Error(`OpenCode ${planLabel} responses API failed (${response.status}): ${errorBody}`)
   }
 
   const body = (await response.json()) as ResponsesApiBody
@@ -229,7 +237,7 @@ export function createOpenCodeProvider(apiKey: string, model: string, plan: Open
       const endpoint = resolveOpenCodeEndpoint(model, plan)
 
       if (endpoint === OPENCODE_ENDPOINT_KINDS.ANTHROPIC) return completeViaAnthropic(apiKey, model, messages, plan)
-      if (endpoint === OPENCODE_ENDPOINT_KINDS.RESPONSES) return completeViaResponses(apiKey, model, messages)
+      if (endpoint === OPENCODE_ENDPOINT_KINDS.RESPONSES) return completeViaResponses(apiKey, model, messages, plan)
       if (endpoint === OPENCODE_ENDPOINT_KINDS.GEMINI) return completeViaGemini(apiKey, model, messages, plan)
       return completeViaChat(apiKey, model, messages, plan)
     }

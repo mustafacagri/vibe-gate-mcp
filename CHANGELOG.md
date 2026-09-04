@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-09-04
+
+### Added
+
+- Support GPT model family (including `gpt-5.6-luna`) on OpenCode Go by routing requests to OpenCode Go Responses API (`/zen/go/v1/responses`).
+
+### Tests
+
+- Added endpoint routing test for GPT models on OpenCode Go.
+- Added OpenCode provider integration test verifying Go Responses endpoint URL and payload.
+
 ## [0.1.2] - 2026-09-02
 
 ### Fixed

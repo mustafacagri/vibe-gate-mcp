@@ -68,6 +68,11 @@ describe('resolveOpenCodeEndpoint (Zen)', () => {
 })
 
 describe('resolveOpenCodeEndpoint (Go)', () => {
+  it('routes GPT models to responses API', () => {
+    expect(resolveOpenCodeEndpoint(GPT, OPENCODE_PLANS.GO)).toBe(OPENCODE_ENDPOINT_KINDS.RESPONSES)
+    expect(resolveOpenCodeEndpoint('gpt-5.6-luna', OPENCODE_PLANS.GO)).toBe(OPENCODE_ENDPOINT_KINDS.RESPONSES)
+  })
+
   it('routes MiniMax and Qwen to Anthropic messages API', () => {
     expect(resolveOpenCodeEndpoint(MINIMAX, OPENCODE_PLANS.GO)).toBe(OPENCODE_ENDPOINT_KINDS.ANTHROPIC)
     expect(resolveOpenCodeEndpoint(MINIMAX_MODELS.M3, OPENCODE_PLANS.GO)).toBe(OPENCODE_ENDPOINT_KINDS.ANTHROPIC)
