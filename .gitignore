@@ -15,3 +15,4 @@ dist
 .vibe-*-test/
 coverage/
 *.tgz
+docs/superpowers/
