@@ -33,9 +33,9 @@ Created automatically when the Critic issues a DEBT verdict and the Implementer 
 - **Status:** Open
 ```
 
-## Configuration & API Keys
+## Configuration & Providers
 
-Vibe-Gate requires an AI provider API key. You can place your configuration (`API_KEY`, `CRITIC_PROVIDER`, `CRITIC_MODEL`, `CRITIC_PERSONA`, etc.) in **any** of the following locations:
+Vibe-Gate can call a direct API provider with an API key, or a local CLI using its existing signed-in account. Put environment configuration (`API_KEY`, `CRITIC_PROVIDER`, `CRITIC_MODEL`, `CRITIC_PERSONA`, etc.) in **any** of the following locations:
 
 1. **Your Project's `.env` (Recommended for Monorepos/Projects):**
    Simply place a `.env` file in the root of the project you are working on (the one defined by `VIBE_WORKSPACE_ROOT`). Vibe-Gate will automatically read it.
@@ -44,7 +44,23 @@ Vibe-Gate requires an AI provider API key. You can place your configuration (`AP
 3. **Package-local `.env` (local development):**
    Copy `.env.example` to `.env` in the package directory, or set the same keys in MCP `env`.
 
-> **Tip:** You can mix and match. For example, define `CRITIC_PROVIDER` broadly in the MCP config, but set a specific `OPENAI_API_KEY` inside your current project's `.env` file.
+> **Tip:** You can mix and match. For example, define `CRITIC_PROVIDER` broadly in the MCP config, but set a specific `OPENAI_API_KEY` inside your current project's `.env` file. Local CLI providers use the CLI's account login and do not read API keys from Vibe-Gate's environment.
+
+### Local CLI providers (no separate API key)
+
+Install and sign in to one supported CLI, then select it:
+
+```env
+CRITIC_PROVIDER=codex-cli
+# Or: claude-code | cursor-agent | opencode-cli
+# OpenCode CLI reuses its saved login and requires a model:
+# CRITIC_PROVIDER=opencode-cli
+# CRITIC_MODEL=provider/model
+```
+
+When `CRITIC_MODEL` is omitted, Codex, Claude Code, and Cursor Agent choose their default model. Set `CRITIC_MODEL` to pass a model override supported by that CLI. Codex runs with user config ignored, so use `CRITIC_MODEL` if you normally select a custom model in `config.toml`. OpenCode CLI requires a `provider/model` value because Vibe-Gate isolates the CLI's user config. The MCP process must run as the same OS user as the CLI login. Configure the matching `*_CLI_PATH` variable if the IDE's MCP process cannot find the command in `PATH`.
+
+Full setup, security behavior, and alternatives we evaluated are in [CLI_PROVIDERS.md](CLI_PROVIDERS.md).
 
 ### OpenAI (default)
 
@@ -99,6 +115,8 @@ OpenCode has two plans sharing the same API key from [opencode.ai/auth](https://
 **Important:** On Go, `minimax-m3` uses the Anthropic `/messages` endpoint (not chat completions). On Zen, it uses `/chat/completions`.
 
 Model IDs are lowercase (`minimax-m3`). Display names like `MiniMax-M3` are accepted as aliases.
+
+`CRITIC_PROVIDER=opencode` uses Vibe-Gate's direct Zen/Go HTTP integration and requires `OPENCODE_API_KEY`. To reuse credentials saved by the local CLI, select `CRITIC_PROVIDER=opencode-cli` and set `CRITIC_MODEL` to a `provider/model` value shown by `opencode models`. See [CLI_PROVIDERS.md](CLI_PROVIDERS.md).
 
 For the **direct MiniMax provider** (`CRITIC_PROVIDER=minimax`), use PascalCase: `MiniMax-M3`.
 

@@ -12,7 +12,7 @@ Vibe-Gate is a **Model Context Protocol (MCP)** server designed for developers w
 
 ### 1. Three-Actor Model & Multi-Model Support
 
-To prevent "echo chambers," the Critic should ideally be a different LLM than the Implementer. Vibe-Gate is LLM-agnostic, allowing you to configure the Critic with your preferred flagship model (e.g., Gemini 3.1 Pro, Claude 4.6 Sonnet, GPT-5.4) via standard API keys.
+To prevent "echo chambers," the Critic should ideally be a different LLM than the Implementer. Vibe-Gate is LLM-agnostic: configure the Critic with a direct provider API key or use a supported local CLI signed in to its provider account. See [CLI_PROVIDERS.md](CLI_PROVIDERS.md).
 
 | Role            | Actor            | Responsibility                                                                |
 | --------------- | ---------------- | ----------------------------------------------------------------------------- |

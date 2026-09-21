@@ -13,11 +13,31 @@ export const SERVER_VERSION = packageJson.version
 /** Environment variable keys */
 export const ENV_KEYS = {
   OPENAI_API_KEY: 'OPENAI_API_KEY',
+  OPENAI_BASE_URL: 'OPENAI_BASE_URL',
+  CODEX_API_KEY: 'CODEX_API_KEY',
   ANTHROPIC_API_KEY: 'ANTHROPIC_API_KEY',
+  ANTHROPIC_AUTH_TOKEN: 'ANTHROPIC_AUTH_TOKEN',
+  ANTHROPIC_BASE_URL: 'ANTHROPIC_BASE_URL',
+  GOOGLE_API_KEY: 'GOOGLE_API_KEY',
   GOOGLE_GENERATIVE_AI_API_KEY: 'GOOGLE_GENERATIVE_AI_API_KEY',
+  GEMINI_API_KEY: 'GEMINI_API_KEY',
   MINIMAX_API_KEY: 'MINIMAX_API_KEY',
   OPENCODE_API_KEY: 'OPENCODE_API_KEY',
+  OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
+  CURSOR_API_KEY: 'CURSOR_API_KEY',
+  AWS_ACCESS_KEY_ID: 'AWS_ACCESS_KEY_ID',
+  AWS_SECRET_ACCESS_KEY: 'AWS_SECRET_ACCESS_KEY',
+  AWS_SESSION_TOKEN: 'AWS_SESSION_TOKEN',
+  GOOGLE_APPLICATION_CREDENTIALS: 'GOOGLE_APPLICATION_CREDENTIALS',
+  OPENCODE_CONFIG: 'OPENCODE_CONFIG',
+  OPENCODE_CONFIG_DIR: 'OPENCODE_CONFIG_DIR',
+  OPENCODE_CONFIG_CONTENT: 'OPENCODE_CONFIG_CONTENT',
   OPENCODE_PLAN: 'OPENCODE_PLAN',
+  CODEX_CLI_PATH: 'CODEX_CLI_PATH',
+  CLAUDE_CODE_CLI_PATH: 'CLAUDE_CODE_CLI_PATH',
+  CURSOR_AGENT_CLI_PATH: 'CURSOR_AGENT_CLI_PATH',
+  OPENCODE_CLI_PATH: 'OPENCODE_CLI_PATH',
+  CRITIC_CLI_TIMEOUT_MS: 'CRITIC_CLI_TIMEOUT_MS',
   CRITIC_PROVIDER: 'CRITIC_PROVIDER',
   CRITIC_MODEL: 'CRITIC_MODEL',
   CRITIC_PERSONA: 'CRITIC_PERSONA',
@@ -38,10 +58,57 @@ export const PROVIDERS = {
   ANTHROPIC: 'anthropic',
   GOOGLE: 'google',
   MINIMAX: 'minimax',
-  OPENCODE: 'opencode'
+  OPENCODE: 'opencode',
+  CODEX_CLI: 'codex-cli',
+  CLAUDE_CODE: 'claude-code',
+  CURSOR_AGENT: 'cursor-agent',
+  OPENCODE_CLI: 'opencode-cli'
 } as const
 
 export type ProviderId = (typeof PROVIDERS)[keyof typeof PROVIDERS]
+export type CliProviderId =
+  | typeof PROVIDERS.CODEX_CLI
+  | typeof PROVIDERS.CLAUDE_CODE
+  | typeof PROVIDERS.CURSOR_AGENT
+  | typeof PROVIDERS.OPENCODE_CLI
+
+/** Default executable names for local CLI providers. */
+export const CLI_DEFAULT_COMMANDS: Record<CliProviderId, string> = {
+  [PROVIDERS.CODEX_CLI]: 'codex',
+  [PROVIDERS.CLAUDE_CODE]: 'claude',
+  [PROVIDERS.CURSOR_AGENT]: 'cursor-agent',
+  [PROVIDERS.OPENCODE_CLI]: 'opencode'
+} as const
+
+/** Environment keys removed from local CLI processes unless a provider explicitly needs one. */
+export const CLI_STRIPPED_ENV_KEYS = [
+  ENV_KEYS.OPENAI_API_KEY,
+  ENV_KEYS.OPENAI_BASE_URL,
+  ENV_KEYS.CODEX_API_KEY,
+  ENV_KEYS.ANTHROPIC_API_KEY,
+  ENV_KEYS.ANTHROPIC_AUTH_TOKEN,
+  ENV_KEYS.ANTHROPIC_BASE_URL,
+  ENV_KEYS.GOOGLE_API_KEY,
+  ENV_KEYS.GOOGLE_GENERATIVE_AI_API_KEY,
+  ENV_KEYS.GEMINI_API_KEY,
+  ENV_KEYS.MINIMAX_API_KEY,
+  ENV_KEYS.OPENCODE_API_KEY,
+  ENV_KEYS.OPENROUTER_API_KEY,
+  ENV_KEYS.CURSOR_API_KEY,
+  ENV_KEYS.AWS_ACCESS_KEY_ID,
+  ENV_KEYS.AWS_SECRET_ACCESS_KEY,
+  ENV_KEYS.AWS_SESSION_TOKEN,
+  ENV_KEYS.GOOGLE_APPLICATION_CREDENTIALS,
+  ENV_KEYS.VIBE_WORKSPACE_ROOT,
+  ENV_KEYS.OPENCODE_CONFIG,
+  ENV_KEYS.OPENCODE_CONFIG_DIR,
+  ENV_KEYS.OPENCODE_CONFIG_CONTENT
+] as const
+
+/** Credential environment variables a provider is allowed to inherit for existing CLI auth. */
+export const CLI_PRESERVED_ENV_KEYS = {
+  [PROVIDERS.CLAUDE_CODE]: [ENV_KEYS.ANTHROPIC_AUTH_TOKEN]
+} as const
 
 /** MiniMax direct API model IDs (PascalCase) — @see https://platform.minimax.io/docs/guides/text-generation */
 export const MINIMAX_MODELS = {
@@ -75,14 +142,27 @@ export const OPENCODE_ZEN_MODEL_ALIASES: Readonly<Record<string, string>> = {
   [MINIMAX_MODELS.M2_5]: OPENCODE_ZEN_MODELS.MINIMAX_M2_5
 }
 
+/** Default CLI model sentinel: let each signed-in CLI use its configured model. */
+export const CLI_DEFAULT_MODEL = 'account-default' as const
+
 /** Default model per provider */
 export const DEFAULT_MODELS: Record<ProviderId, string> = {
   [PROVIDERS.OPENAI]: 'gpt-5.4',
   [PROVIDERS.ANTHROPIC]: 'claude-4.6-sonnet',
   [PROVIDERS.GOOGLE]: 'gemini-3.1-pro',
   [PROVIDERS.MINIMAX]: MINIMAX_MODELS.M3,
-  [PROVIDERS.OPENCODE]: OPENCODE_ZEN_MODELS.MINIMAX_M3
+  [PROVIDERS.OPENCODE]: OPENCODE_ZEN_MODELS.MINIMAX_M3,
+  [PROVIDERS.CODEX_CLI]: CLI_DEFAULT_MODEL,
+  [PROVIDERS.CLAUDE_CODE]: CLI_DEFAULT_MODEL,
+  [PROVIDERS.CURSOR_AGENT]: CLI_DEFAULT_MODEL,
+  [PROVIDERS.OPENCODE_CLI]: CLI_DEFAULT_MODEL
 } as const
+
+/** Local CLI process limits */
+export const CLI_PROVIDER_DEFAULT_TIMEOUT_MS = 120_000
+export const CLI_PROVIDER_MAX_TIMEOUT_MS = 600_000
+export const CLI_PROVIDER_MAX_STDOUT_BYTES = 8 * 1024 * 1024
+export const CLI_PROVIDER_MAX_STDERR_BYTES = 128 * 1024
 
 /** OpenCode subscription plans — @see https://opencode.ai/docs/zen/ and /docs/go/ */
 export const OPENCODE_PLANS = {
@@ -283,7 +363,8 @@ export const CONFLICT_LOOP = {
 
 /** Error messages (SSoT) */
 export const ERROR_MESSAGES = {
-  NO_LLM_PROVIDER: 'No LLM provider available. Set CRITIC_PROVIDER and the corresponding API key.',
+  NO_LLM_PROVIDER:
+    'No LLM provider available. Set CRITIC_PROVIDER and either the required API key or an installed, authenticated local CLI.',
   STARTUP_FAILED: 'Vibe-Gate failed to start:'
 } as const
 
@@ -577,7 +658,12 @@ export const CONTEXT_WINDOWS: Record<ProviderId, number> = {
   [PROVIDERS.ANTHROPIC]: 200_000,
   [PROVIDERS.GOOGLE]: 2_000_000,
   [PROVIDERS.MINIMAX]: 272_000,
-  [PROVIDERS.OPENCODE]: 200_000
+  [PROVIDERS.OPENCODE]: 200_000,
+  // CLI model selection belongs to the signed-in tool; use a conservative budget.
+  [PROVIDERS.CODEX_CLI]: 200_000,
+  [PROVIDERS.CLAUDE_CODE]: 200_000,
+  [PROVIDERS.CURSOR_AGENT]: 200_000,
+  [PROVIDERS.OPENCODE_CLI]: 200_000
 } as const
 
 /** Max context windows (theoretical / beta) */
@@ -586,7 +672,11 @@ export const MAX_CONTEXT_WINDOWS: Record<ProviderId, number> = {
   [PROVIDERS.ANTHROPIC]: 1_000_000,
   [PROVIDERS.GOOGLE]: 2_000_000,
   [PROVIDERS.MINIMAX]: 1_000_000,
-  [PROVIDERS.OPENCODE]: 1_000_000
+  [PROVIDERS.OPENCODE]: 1_000_000,
+  [PROVIDERS.CODEX_CLI]: 1_000_000,
+  [PROVIDERS.CLAUDE_CODE]: 1_000_000,
+  [PROVIDERS.CURSOR_AGENT]: 1_000_000,
+  [PROVIDERS.OPENCODE_CLI]: 1_000_000
 } as const
 
 /** Critic V2 thresholds */

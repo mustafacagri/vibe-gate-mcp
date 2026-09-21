@@ -9,7 +9,13 @@ import { createAnthropicProvider } from '@/llm/anthropic'
 import { createGoogleProvider } from '@/llm/google'
 import { createMiniMaxProvider } from '@/llm/minimax'
 import { createOpenCodeProvider } from '@/llm/opencode'
-import { PROVIDERS } from '@/constants'
+import {
+  createClaudeCodeProvider,
+  createCodexCliProvider,
+  createCursorAgentProvider,
+  createOpenCodeCliProvider
+} from '@/llm/cli'
+import { CLI_DEFAULT_COMMANDS, PROVIDERS } from '@/constants'
 import { getEffectiveModel } from '@/config'
 
 export function createLLMProvider(config: Config): LLMProvider | null {
@@ -40,7 +46,31 @@ export function createLLMProvider(config: Config): LLMProvider | null {
       const key = config.opencodeApiKey
       if (!key) return null
       return createOpenCodeProvider(key, model, config.opencodePlan)
-    }
+    },
+    [PROVIDERS.CODEX_CLI]: () =>
+      createCodexCliProvider(
+        config.codexCliPath ?? CLI_DEFAULT_COMMANDS[PROVIDERS.CODEX_CLI],
+        model,
+        config.criticCliTimeoutMs
+      ),
+    [PROVIDERS.CLAUDE_CODE]: () =>
+      createClaudeCodeProvider(
+        config.claudeCodeCliPath ?? CLI_DEFAULT_COMMANDS[PROVIDERS.CLAUDE_CODE],
+        model,
+        config.criticCliTimeoutMs
+      ),
+    [PROVIDERS.CURSOR_AGENT]: () =>
+      createCursorAgentProvider(
+        config.cursorAgentCliPath ?? CLI_DEFAULT_COMMANDS[PROVIDERS.CURSOR_AGENT],
+        model,
+        config.criticCliTimeoutMs
+      ),
+    [PROVIDERS.OPENCODE_CLI]: () =>
+      createOpenCodeCliProvider(
+        config.opencodeCliPath ?? CLI_DEFAULT_COMMANDS[PROVIDERS.OPENCODE_CLI],
+        model,
+        config.criticCliTimeoutMs
+      )
   }
 
   const factory = providerMap[config.criticProvider]

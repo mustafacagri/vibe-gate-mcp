@@ -16,6 +16,11 @@ describe('config', () => {
     delete process.env[ENV_KEYS.MINIMAX_API_KEY]
     delete process.env[ENV_KEYS.OPENCODE_API_KEY]
     delete process.env[ENV_KEYS.OPENCODE_PLAN]
+    delete process.env[ENV_KEYS.CODEX_CLI_PATH]
+    delete process.env[ENV_KEYS.CLAUDE_CODE_CLI_PATH]
+    delete process.env[ENV_KEYS.CURSOR_AGENT_CLI_PATH]
+    delete process.env[ENV_KEYS.OPENCODE_CLI_PATH]
+    delete process.env[ENV_KEYS.CRITIC_CLI_TIMEOUT_MS]
   })
 
   afterEach(() => {
@@ -34,7 +39,12 @@ describe('config', () => {
         googleApiKey: undefined,
         minimaxApiKey: undefined,
         opencodeApiKey: undefined,
-        opencodePlan: OPENCODE_PLANS.GO
+        opencodePlan: OPENCODE_PLANS.GO,
+        codexCliPath: undefined,
+        claudeCodeCliPath: undefined,
+        cursorAgentCliPath: undefined,
+        opencodeCliPath: undefined,
+        criticCliTimeoutMs: 120_000
       })
     })
 
@@ -48,6 +58,11 @@ describe('config', () => {
       process.env[ENV_KEYS.MINIMAX_API_KEY] = 'test-minimax-key'
       process.env[ENV_KEYS.OPENCODE_API_KEY] = 'test-opencode-key'
       process.env[ENV_KEYS.OPENCODE_PLAN] = OPENCODE_PLANS.ZEN
+      process.env[ENV_KEYS.CODEX_CLI_PATH] = '/usr/local/bin/codex'
+      process.env[ENV_KEYS.CLAUDE_CODE_CLI_PATH] = '/usr/local/bin/claude'
+      process.env[ENV_KEYS.CURSOR_AGENT_CLI_PATH] = '/usr/local/bin/cursor-agent'
+      process.env[ENV_KEYS.OPENCODE_CLI_PATH] = '/usr/local/bin/opencode'
+      process.env[ENV_KEYS.CRITIC_CLI_TIMEOUT_MS] = '90000'
 
       const config = loadConfig()
       expect(config).toEqual({
@@ -59,7 +74,12 @@ describe('config', () => {
         googleApiKey: 'test-google-key',
         minimaxApiKey: 'test-minimax-key',
         opencodeApiKey: 'test-opencode-key',
-        opencodePlan: OPENCODE_PLANS.ZEN
+        opencodePlan: OPENCODE_PLANS.ZEN,
+        codexCliPath: '/usr/local/bin/codex',
+        claudeCodeCliPath: '/usr/local/bin/claude',
+        cursorAgentCliPath: '/usr/local/bin/cursor-agent',
+        opencodeCliPath: '/usr/local/bin/opencode',
+        criticCliTimeoutMs: 90_000
       })
     })
 
@@ -71,6 +91,17 @@ describe('config', () => {
       process.env[envKey] = invalidValue
       expect(() => loadConfig()).toThrow()
     })
+
+    it('requires an explicit provider/model ID for the isolated OpenCode CLI', () => {
+      process.env[ENV_KEYS.CRITIC_PROVIDER] = PROVIDERS.OPENCODE_CLI
+      expect(() => loadConfig()).toThrow(/provider\/model form/)
+      process.env[ENV_KEYS.CRITIC_MODEL] = '/model'
+      expect(() => loadConfig()).toThrow(/provider\/model form/)
+      process.env[ENV_KEYS.CRITIC_MODEL] = 'provider/'
+      expect(() => loadConfig()).toThrow(/provider\/model form/)
+      process.env[ENV_KEYS.CRITIC_MODEL] = 'opencode-go/minimax-m3'
+      expect(loadConfig().criticModel).toBe('opencode-go/minimax-m3')
+    })
   })
 
   describe('getEffectiveModel', () => {
@@ -79,22 +110,31 @@ describe('config', () => {
         criticProvider: PROVIDERS.OPENAI,
         criticModel: 'custom-model',
         criticPersona: PERSONAS.CLEAN_CODE_MONK,
-        opencodePlan: OPENCODE_PLANS.GO
+        opencodePlan: OPENCODE_PLANS.GO,
+        criticCliTimeoutMs: 120_000
       }
       expect(getEffectiveModel(config)).toBe('custom-model')
     })
 
-    it.each([[PROVIDERS.OPENAI], [PROVIDERS.ANTHROPIC], [PROVIDERS.GOOGLE], [PROVIDERS.MINIMAX], [PROVIDERS.OPENCODE]])(
-      'returns default model for provider %s when criticModel is not set',
-      provider => {
-        const config = {
-          criticProvider: provider,
-          criticModel: undefined,
-          criticPersona: PERSONAS.CLEAN_CODE_MONK,
-          opencodePlan: OPENCODE_PLANS.GO
-        }
-        expect(getEffectiveModel(config)).toBe(DEFAULT_MODELS[provider as ProviderId])
+    it.each([
+      [PROVIDERS.OPENAI],
+      [PROVIDERS.ANTHROPIC],
+      [PROVIDERS.GOOGLE],
+      [PROVIDERS.MINIMAX],
+      [PROVIDERS.OPENCODE],
+      [PROVIDERS.CODEX_CLI],
+      [PROVIDERS.CLAUDE_CODE],
+      [PROVIDERS.CURSOR_AGENT],
+      [PROVIDERS.OPENCODE_CLI]
+    ])('returns default model for provider %s when criticModel is not set', provider => {
+      const config = {
+        criticProvider: provider,
+        criticModel: undefined,
+        criticPersona: PERSONAS.CLEAN_CODE_MONK,
+        opencodePlan: OPENCODE_PLANS.GO,
+        criticCliTimeoutMs: 120_000
       }
-    )
+      expect(getEffectiveModel(config)).toBe(DEFAULT_MODELS[provider as ProviderId])
+    })
   })
 })

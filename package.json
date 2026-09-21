@@ -1,6 +1,6 @@
 {
   "name": "vibe-gate-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Adversarial Quality Gate MCP for vibe-coding: IDE AI vs Critic AI, human decides on deadlock",
   "license": "MIT",
@@ -35,6 +35,7 @@
     "README.md",
     "CHANGELOG.md",
     "docs/INSTALLATION.md",
+    "docs/CLI_PROVIDERS.md",
     "docs/USAGE.md",
     "docs/SEMANTIC_DIFF_PAYLOAD.md",
     "docs/TROUBLESHOOTING.md",
