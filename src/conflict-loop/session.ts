@@ -36,7 +36,6 @@ const concernVerificationSchema = z.object({
 const reviewRoundSchema = z.object({
   round: z.number(),
   report: z.string(),
-  semanticDiff: z.string().optional(),
   verdict: z.string(),
   criticResponse: z.string(),
   concerns: z.array(concernSchema).optional(),

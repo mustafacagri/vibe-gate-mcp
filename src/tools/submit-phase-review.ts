@@ -20,7 +20,9 @@ import {
   ERROR_MESSAGES,
   JSON_INDENT_SPACES,
   NONE_PLACEHOLDER,
-  PATHS
+  PATHS,
+  REVIEW_INPUT_LIMITS,
+  SEMANTIC_DIFF_SOURCE_FILES
 } from '@/constants'
 import {
   appendRound,
@@ -58,6 +60,7 @@ import { getErrorMessage } from '@/utils/error'
 import { computeSemanticDiffLineHints } from '@/utils/semantic-diff-line-hints'
 import { getWorkspaceRoot } from '@/workspace'
 import { debugLog } from '@/utils/debug'
+import { readRequestedFiles } from '@/summarizer/read-changed-files'
 import type { LLMMessage } from '@/llm/types'
 import type { ReviewRound, ReviewSession } from '@/conflict-loop/types'
 
@@ -112,20 +115,16 @@ function buildHistorySummary(
   return parts.join('\n\n---\n\n')
 }
 
-function buildUserContent(args: SubmitPhaseReviewArgs, historySummary?: string): string {
-  const parts: string[] = [`Phase: ${args.phaseId}`, `<developer_report>\n${args.report}\n</developer_report>`]
+function buildUserContent(args: SubmitPhaseReviewArgs, historySummary?: string, requestedContext = ''): string {
+  const parts: string[] = [`Phase: ${args.phaseId}`]
 
   if (historySummary) parts.unshift(`Previous rounds:\n${historySummary}\n`)
 
-  if (args.semanticDiff?.trim()) {
-    parts.push(
-      `## CHANGED FILES (MCP resolved payload from files[], semanticDiffPath, or inline semanticDiff — this is the review corpus):\n<code_content>\n${args.semanticDiff.trim()}\n</code_content>`
-    )
-  }
+  parts.push(`<developer_report>\n${args.report}\n</developer_report>`)
+  const codeContent = [args.semanticDiff, requestedContext].filter(Boolean).join('\n\n')
+  parts.push(`## CHANGED FILES\n<code_content>\n${codeContent}\n</code_content>`)
 
   if (args.dependencies?.length) parts.push(`Dependencies: ${args.dependencies.join(', ')}`)
-
-  debugLog(`buildUserContent - semanticDiff length: ${args.semanticDiff?.length ?? 0}`)
 
   return parts.join('\n\n')
 }
@@ -133,8 +132,7 @@ function buildUserContent(args: SubmitPhaseReviewArgs, historySummary?: string):
 async function buildContextBlock(
   workspaceRoot: string,
   newDeps: string[],
-  semanticDiff: string | undefined,
-  report: string
+  semanticDiff: string | undefined
 ): Promise<{ context: string; filesAnalyzed: number }> {
   const [blueprint, pkgDeps] = await Promise.all([
     extractProjectBlueprint(workspaceRoot),
@@ -153,64 +151,9 @@ async function buildContextBlock(
 
   if (bloatWarn) parts.push(BLOAT_WARNING_MESSAGE)
 
-  let filesAnalyzed = 0
-
-  const combinedText = [semanticDiff, report].filter(Boolean).join('\n')
-  if (combinedText) {
-    const parsed = parseSemanticDiff(combinedText)
-    filesAnalyzed = parsed.filesChanged.length
-
-    const contentBlock = buildContentBlockFromInput(semanticDiff, report)
-    parts.push(contentBlock)
-  }
+  const filesAnalyzed = semanticDiff ? parseSemanticDiff(semanticDiff).filesChanged.length : 0
 
   return { context: parts.join(' '), filesAnalyzed }
-}
-
-function buildContentBlockFromInput(semanticDiff: string | undefined, report: string): string {
-  const sections: string[] = []
-
-  if (semanticDiff?.trim()) {
-    sections.push(
-      `## CHANGED FILES (MCP resolved FILE:...CONTENT: payload from files[], semanticDiffPath, or inline semanticDiff):\n${semanticDiff.trim()}`
-    )
-  }
-
-  if (report?.trim()) sections.push(`## DEVELOPER REPORT:\n${report.trim()}`)
-
-  return sections.join('\n\n')
-}
-
-async function appendRequestedFilesToContext(
-  workspaceRoot: string,
-  originalContext: string,
-  criticResponse: string
-): Promise<{ context: string; filesAnalyzed: number }> {
-  if (!hasRequestBlocks(criticResponse)) return { context: originalContext, filesAnalyzed: 0 }
-
-  return {
-    context: `${originalContext}\n\n## CRITIC REQUESTED MORE CONTEXT\nNote: Resubmit with files[] (or semanticDiffPath / inline semanticDiff) covering every path the Critic needs. MCP reads those workspace paths when you provide them.`,
-    filesAnalyzed: 0
-  }
-}
-
-async function appendPreviousRoundsFilesToContext(
-  workspaceRoot: string,
-  originalContext: string,
-  session: ReviewSession
-): Promise<{ context: string; filesAnalyzed: number }> {
-  const previousContents: string[] = []
-
-  for (const h of session.history) {
-    if (h.semanticDiff?.trim()) previousContents.push(`--- Round ${h.round} ---\n${h.semanticDiff.trim()}`)
-  }
-
-  if (previousContents.length === 0) return { context: originalContext, filesAnalyzed: 0 }
-
-  return {
-    context: `${originalContext}\n\n## PREVIOUS ROUNDS CONTENT (preserved):\n${previousContents.join('\n\n')}`,
-    filesAnalyzed: 0
-  }
 }
 
 function toTextContent(json: unknown): { type: 'text'; text: string } {
@@ -274,13 +217,6 @@ async function checkDeadlockEarly(
   semanticDiffHints: string[]
 ): Promise<{ content: Array<{ type: 'text'; text: string }> } | null> {
   const round = args.round ?? DEFAULT_ROUND
-  if (round > CONFLICT_LOOP.MAX_ROUNDS) {
-    await clearSession(workspaceRoot)
-    await updateConflictCount(workspaceRoot, 1)
-    const caseFile = buildCaseFile(args.phaseId, round, [])
-    await writeCaseFile(workspaceRoot, caseFile)
-    return { content: [toTextContentWithHints({ ...caseFile, filesAnalyzed: 0 }, semanticDiffHints)] }
-  }
   if (round > 1 && session?.phaseId === args.phaseId && session.round >= CONFLICT_LOOP.MAX_ROUNDS) {
     await clearSession(workspaceRoot)
     await updateConflictCount(workspaceRoot, 1)
@@ -388,36 +324,29 @@ async function runCriticReview(
   const model = getEffectiveModel(config)
   const [status, contextBlockResult, rules, preferencesLog] = await Promise.all([
     getStatus(workspaceRoot),
-    buildContextBlock(workspaceRoot, args.dependencies ?? [], args.semanticDiff, args.report),
+    buildContextBlock(workspaceRoot, args.dependencies ?? [], args.semanticDiff),
     loadRules(workspaceRoot),
     readPreferencesLog(workspaceRoot)
   ])
 
-  let enrichedContextBlock = contextBlockResult.context
+  const enrichedContextBlock = contextBlockResult.context
   let totalFilesRead = contextBlockResult.filesAnalyzed
+  let requestedContext = ''
 
-  // Round 2+: Preserve files from previous rounds and handle REQUEST blocks
+  // Round 2+: Read files explicitly requested by the previous Critic response.
   if (round > 1 && session?.history && session.history.length > 0) {
     const previousCriticResponse = session.history[session.history.length - 1].criticResponse
 
     if (hasRequestBlocks(previousCriticResponse)) {
-      const requestedBlockResult = await appendRequestedFilesToContext(
-        workspaceRoot,
-        enrichedContextBlock,
-        previousCriticResponse
-      )
-      enrichedContextBlock = requestedBlockResult.context
+      const requestedBlockResult = await readRequestedFiles(workspaceRoot, previousCriticResponse)
+      requestedContext = requestedBlockResult.semanticDiff
       totalFilesRead += requestedBlockResult.filesAnalyzed
     }
-
-    const previousRoundsResult = await appendPreviousRoundsFilesToContext(workspaceRoot, enrichedContextBlock, session)
-    enrichedContextBlock = previousRoundsResult.context
-    totalFilesRead += previousRoundsResult.filesAnalyzed
   }
 
   const rulesBlock = formatRulesForPrompt(rules)
   const historySummary = session?.phaseId === args.phaseId ? buildHistorySummary(session.history) : undefined
-  const userContent = buildUserContent(args, historySummary)
+  const userContent = buildUserContent(args, historySummary, requestedContext)
   const messages: LLMMessage[] = [
     {
       role: 'system',
@@ -465,7 +394,6 @@ async function runCriticReview(
   const roundData: ReviewRound = {
     round,
     report: args.report,
-    semanticDiff: args.semanticDiff,
     verdict: String(verdict),
     criticResponse: response.content,
     concerns: concerns.length > 0 ? concerns : undefined,
@@ -552,8 +480,7 @@ async function handleRejectOrContinue(
     }
   }
 
-  // Only DEADLOCK if genuinely unresolvable after max rounds
-  if (round > CONFLICT_LOOP.MAX_ROUNDS) {
+  if (round >= CONFLICT_LOOP.MAX_ROUNDS) {
     await clearSession(workspaceRoot)
     await updateConflictCount(workspaceRoot, 1)
     const caseFile = buildCaseFile(args.phaseId, round, nextSession.history, String(result.verdict))
@@ -595,26 +522,42 @@ async function handleRejectOrContinue(
  * which advertises `properties: {}` to IDEs (agents then cannot discover `files` / `semanticDiffPath`).
  */
 export const submitPhaseReviewFieldsSchema = z.object({
-  phaseId: z.string().describe('Phase identifier (e.g., phase-6-§1a or 1.1.1)'),
+  phaseId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(REVIEW_INPUT_LIMITS.MAX_PHASE_ID_CHARS)
+    .describe('Phase identifier (e.g., phase-6-§1a or 1.1.1)'),
   report: z
     .string()
+    .trim()
+    .min(1)
+    .max(REVIEW_INPUT_LIMITS.MAX_REPORT_CHARS)
     .describe(
       'Implementer report. MUST INCLUDE: 1. Specific file paths & line numbers. 2. What changed and why. 3. Confirmation that NO "future solutions" or "TODOs" remain (instant fixes only).'
     ),
   files: z
-    .array(z.string())
+    .array(z.string().trim().min(1).max(REVIEW_INPUT_LIMITS.MAX_PATH_CHARS))
+    .min(1)
+    .max(SEMANTIC_DIFF_SOURCE_FILES.MAX_COUNT)
     .optional()
     .describe(
-      'PREFERRED. Workspace-relative source paths under VIBE_WORKSPACE_ROOT. MCP reads each file and builds FILE:...CONTENT: payload. Exactly one of: files | semanticDiffPath | semanticDiff. Max 10 files.'
+      `PREFERRED. Workspace-relative source paths under VIBE_WORKSPACE_ROOT. MCP reads each file and builds FILE:...CONTENT: payload. Exactly one of: files | semanticDiffPath | semanticDiff. Max ${SEMANTIC_DIFF_SOURCE_FILES.MAX_COUNT} files.`
     ),
   semanticDiffPath: z
     .string()
+    .trim()
+    .min(1)
+    .max(REVIEW_INPUT_LIMITS.MAX_PATH_CHARS)
     .optional()
     .describe(
       'Workspace-relative path to a pre-built FILE:...CONTENT: payload file (raw or JSON {"semanticDiff":"..."}). Exactly one of: files | semanticDiffPath | semanticDiff.'
     ),
   semanticDiff: z
     .string()
+    .trim()
+    .min(1)
+    .max(REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS)
     .optional()
     .describe(
       'Inline FILE:...CONTENT: payload. Prefer files[]. Exactly one of: files | semanticDiffPath | semanticDiff. NOT git diff.'
@@ -625,12 +568,22 @@ export const submitPhaseReviewFieldsSchema = z.object({
     .describe(
       'When false, ACCEPT does not write .vibe/status.json. Default: true except phaseIds with mcp-smoke- / vibe-gate-probe- prefixes.'
     ),
-  dependencies: z.array(z.string()).optional().describe('New/updated package names'),
-  round: z.number().optional().describe('Round number (1-3), default 1'),
+  dependencies: z
+    .array(z.string().trim().min(1).max(REVIEW_INPUT_LIMITS.MAX_DEPENDENCY_NAME_CHARS))
+    .max(REVIEW_INPUT_LIMITS.MAX_DEPENDENCIES)
+    .optional()
+    .describe('New/updated package names'),
+  round: z
+    .number()
+    .int()
+    .min(DEFAULT_ROUND)
+    .max(CONFLICT_LOOP.MAX_ROUNDS)
+    .optional()
+    .describe(`Round number (${DEFAULT_ROUND}-${CONFLICT_LOOP.MAX_ROUNDS}), default ${DEFAULT_ROUND}`),
   logToDebt: z
     .object({
-      subject: z.string(),
-      rationale: z.string()
+      subject: z.string().trim().min(1).max(REVIEW_INPUT_LIMITS.MAX_DEBT_SUBJECT_CHARS),
+      rationale: z.string().trim().min(1).max(REVIEW_INPUT_LIMITS.MAX_DEBT_RATIONALE_CHARS)
     })
     .optional()
     .describe('When DEBT verdict and Implementer accepts, log to DEBT.md')
@@ -936,6 +889,37 @@ async function handleAcceptVerdictFlow(
   return handleAcceptVerdict(reviewResult, workspaceRoot, args, semanticDiffHints)
 }
 
+type SemanticDiffResolution = { ok: true; semanticDiff: string } | { ok: false; error: string; code?: string }
+
+async function resolveSemanticDiffInput(
+  workspaceRoot: string,
+  input: SubmitPhaseReviewInput
+): Promise<SemanticDiffResolution> {
+  let semanticDiff: string
+  if (input.files) {
+    const built = await buildSemanticDiffFromSourceFiles(workspaceRoot, input.files)
+    if (!built.ok) return { ok: false, error: built.message, code: built.code }
+    semanticDiff = built.semanticDiff
+    debugLog(`semanticDiff built from files[]: ${built.filesLoaded.join(', ')}`)
+  } else if (input.semanticDiffPath) {
+    const loaded = await loadSemanticDiffFromWorkspacePath(workspaceRoot, input.semanticDiffPath)
+    if (!loaded.ok) return { ok: false, error: loaded.message, code: loaded.code }
+    semanticDiff = loaded.semanticDiff
+    debugLog(`semanticDiff loaded from file: ${loaded.resolvedFromPath}`)
+  } else {
+    semanticDiff = input.semanticDiff!.trim()
+  }
+
+  if (semanticDiff.length > REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS) {
+    return {
+      ok: false,
+      error: `resolved semanticDiff exceeds the maximum size of ${REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS} characters.`
+    }
+  }
+
+  return { ok: true, semanticDiff }
+}
+
 export async function handleSubmitPhaseReview(
   rawArgs: unknown
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
@@ -960,25 +944,13 @@ export async function handleSubmitPhaseReview(
   }
 
   const workspaceRoot = getWorkspaceRoot()
-
-  let semanticDiff: string
-  if (input.files && input.files.some(f => f.trim().length > 0)) {
-    const built = await buildSemanticDiffFromSourceFiles(workspaceRoot, input.files)
-    if (!built.ok) {
-      return { content: [toTextContent({ error: built.message, code: built.code })] }
+  const resolution = await resolveSemanticDiffInput(workspaceRoot, input)
+  if (!resolution.ok) {
+    return {
+      content: [toTextContent({ error: resolution.error, ...(resolution.code ? { code: resolution.code } : {}) })]
     }
-    semanticDiff = built.semanticDiff
-    debugLog(`semanticDiff built from files[]: ${built.filesLoaded.join(', ')}`)
-  } else if (input.semanticDiffPath?.trim()) {
-    const loaded = await loadSemanticDiffFromWorkspacePath(workspaceRoot, input.semanticDiffPath.trim())
-    if (!loaded.ok) {
-      return { content: [toTextContent({ error: loaded.message, code: loaded.code })] }
-    }
-    semanticDiff = loaded.semanticDiff
-    debugLog(`semanticDiff loaded from file: ${loaded.resolvedFromPath}`)
-  } else {
-    semanticDiff = input.semanticDiff!.trim()
   }
+  const { semanticDiff } = resolution
 
   const args: SubmitPhaseReviewArgs = {
     phaseId: input.phaseId,

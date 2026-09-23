@@ -22,13 +22,15 @@ exactly one payload source:
   semanticDiffPath → loadSemanticDiffFromWorkspacePath
   semanticDiff → use inline string
     ↓
-parseSemanticDiff() → filesChanged count / context
+parseSemanticDiff() → filesChanged count
     ↓
-buildContextBlock() → blueprint, deps, FILE:…CONTENT: corpus
+buildContextBlock() → project summary and dependencies
     ↓
-provider.complete([system, user]) → Critic LLM
+provider.complete([system, user]) → Critic LLM (report and source payload sent once in user message)
     ↓
 parseVerdictFromResponse → ACCEPT | REJECT | …
+    ↓
+on the next round, read workspace paths from prior REQUEST: blocks (bounded and canonical-path checked)
     ↓
 if ACCEPT && shouldPersistPhaseStatus(phaseId, updateStatus) → updatePhaseOnAccept → .vibe/status.json
     ↓
@@ -48,6 +50,8 @@ Response JSON: { verdict, model, usage, statusUpdated, statusSkipped?, statusErr
 | dependencies     | string[] | no       | New/updated packages                                                                           |
 | round            | number   | no       | Round (1–3), default 1                                                                         |
 | logToDebt        | object   | no       | When DEBT: `{ subject, rationale }`                                                            |
+
+Input limits are enforced by the MCP schema: phase id 256 characters, report 50,000, dependency list 100 names (256 characters each), and paths 1,024 characters. The resolved source payload is rechecked after loading and limited to 500,000 characters. Critic-requested context is limited to 10 files, 1 MiB per file, and 120 lines per request.
 
 † **Exactly one** of `files` (non-empty), `semanticDiffPath` (non-empty), or `semanticDiff` (non-empty). See [SEMANTIC_DIFF_PAYLOAD.md](../../SEMANTIC_DIFF_PAYLOAD.md).
 

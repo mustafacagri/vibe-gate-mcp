@@ -461,6 +461,19 @@ export const SEMANTIC_DIFF_SOURCE_FILES = {
   MAX_TOTAL_BYTES: 5 * 1024 * 1024
 } as const
 
+/** MCP review input bounds; apply size checks again after files are read. */
+export const REVIEW_INPUT_LIMITS = {
+  MAX_PHASE_ID_CHARS: 256,
+  MAX_REPORT_CHARS: 50_000,
+  MAX_SEMANTIC_DIFF_CHARS: 500_000,
+  MAX_PATH_CHARS: 1_024,
+  MAX_DEPENDENCIES: 100,
+  MAX_DEPENDENCY_NAME_CHARS: 256,
+  MAX_DEBT_SUBJECT_CHARS: 200,
+  MAX_DEBT_RATIONALE_CHARS: 4_000,
+  MAX_REQUESTED_CONTEXT_LINES: 120
+} as const
+
 /**
  * Status.json write policy on ACCEPT.
  * Probe phaseIds must not pollute consumer `.vibe/status.json` unless updateStatus:true.

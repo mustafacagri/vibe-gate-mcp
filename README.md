@@ -45,6 +45,8 @@ OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 
 `opencode` is still the separate Zen/Go HTTP provider and needs `OPENCODE_API_KEY`. `opencode-cli` runs the local CLI and requires a `provider/model` value in `CRITIC_MODEL`; see the CLI guide for details.
 
+`CRITIC_MODEL` is passed to the selected provider or CLI without a Vibe-Gate model allowlist; the provider must support that model ID. The OpenAI API provider uses the Responses API. See [provider configuration](docs/USAGE.md#configuration--providers).
+
 See [CLI provider setup and alternatives](docs/CLI_PROVIDERS.md) for CLI installation, login, configuration, OpenCode session details, and other candidates we evaluated. Full variable list: [docs/project/VARIABLES.md](docs/project/VARIABLES.md).
 
 ### 2. Configure Cursor MCP (any consumer repo)
@@ -122,6 +124,7 @@ Probes: `updateStatus: false` or `phaseId` prefixes `mcp-smoke-` / `vibe-gate-pr
 | [docs/USAGE.md](docs/USAGE.md)                                 | First run and providers   |
 | [docs/CLI_PROVIDERS.md](docs/CLI_PROVIDERS.md)                 | Local CLI providers       |
 | [docs/SEMANTIC_DIFF_PAYLOAD.md](docs/SEMANTIC_DIFF_PAYLOAD.md) | `files[]` contract        |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                             | Release checklist         |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)             | Stale MCP, path errors    |
 | [docs/project/VARIABLES.md](docs/project/VARIABLES.md)         | Env SSoT                  |
 | [examples/](examples/)                                         | Cursor mcp.json templates |

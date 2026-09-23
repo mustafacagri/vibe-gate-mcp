@@ -36,7 +36,6 @@ export interface ConcernVerification {
 export interface ReviewRound {
   round: number
   report: string
-  semanticDiff?: string
   verdict: string
   criticResponse: string
   concerns?: Concern[]

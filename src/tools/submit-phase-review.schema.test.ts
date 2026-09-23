@@ -5,6 +5,7 @@ import {
   submitPhaseReviewFieldsSchema,
   submitPhaseReviewInputSchema
 } from '@/tools/submit-phase-review'
+import { CONFLICT_LOOP, REVIEW_INPUT_LIMITS } from '@/constants'
 
 describe('submitPhaseReviewInputSchema', () => {
   it('accepts files[] only (preferred)', () => {
@@ -70,6 +71,28 @@ describe('submitPhaseReviewInputSchema', () => {
       updateStatus: false
     })
     expect(r.success).toBe(true)
+  })
+
+  it('rejects rounds beyond the supported conflict loop and fractional rounds', () => {
+    const args = { phaseId: '1.1.1', report: 'r', semanticDiff: 'FILE: a.ts\nCONTENT:\nx\n' }
+    expect(submitPhaseReviewInputSchema.safeParse({ ...args, round: CONFLICT_LOOP.MAX_ROUNDS + 1 }).success).toBe(false)
+    expect(submitPhaseReviewInputSchema.safeParse({ ...args, round: 1.5 }).success).toBe(false)
+  })
+
+  it('rejects oversized report and semantic diff payloads', () => {
+    const args = { phaseId: '1.1.1', report: 'r', semanticDiff: 'FILE: a.ts\nCONTENT:\nx\n' }
+    expect(
+      submitPhaseReviewInputSchema.safeParse({
+        ...args,
+        report: 'r'.repeat(REVIEW_INPUT_LIMITS.MAX_REPORT_CHARS + 1)
+      }).success
+    ).toBe(false)
+    expect(
+      submitPhaseReviewInputSchema.safeParse({
+        ...args,
+        semanticDiff: 'x'.repeat(REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS + 1)
+      }).success
+    ).toBe(false)
   })
 })
 

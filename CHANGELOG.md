@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-23
+
+### Fixed
+
+- Enforce bounded review inputs, close the conflict loop as deadlocked after a rejected third round, and avoid duplicating or persisting source payloads between rounds.
+- Load Critic `REQUEST:` paths from the workspace with path, file-count, file-size, line-count, and total-context limits; reject traversal and symlink escapes in changed-file reads.
+- Use the OpenAI Responses API so current reasoning models work without model-specific request parameters or a Vibe-Gate model allowlist.
+
+### Docs
+
+- Document the review limits and requested-context behavior, and add a release checklist and scope review.
+
 ## [0.1.4] - 2026-09-21
 
 ### Added

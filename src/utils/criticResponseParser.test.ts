@@ -316,6 +316,19 @@ NOT_VERIFIED: src/utils/helper.ts:42 → Still broken`
       expect(requests[0].lineRange).toBeUndefined()
     })
 
+    it('parses the prompt example with a line range and reason', () => {
+      const requests = parseRequestsFromResponse('REQUEST: src/utils/helper.ts:45-60, src/constants.ts imports')
+      expect(requests).toEqual([
+        { filePath: 'src/utils/helper.ts', lineRange: '45-60', reason: undefined },
+        { filePath: 'src/constants.ts', lineRange: undefined, reason: 'imports' }
+      ])
+    })
+
+    it('parses a quoted path containing spaces', () => {
+      const requests = parseRequestsFromResponse('REQUEST: "src/shared helpers.ts":10-20')
+      expect(requests[0]).toMatchObject({ filePath: 'src/shared helpers.ts', lineRange: '10-20' })
+    })
+
     it('returns empty array when no requests found', () => {
       const response = 'Everything looks good, no files needed.'
       const requests = parseRequestsFromResponse(response)

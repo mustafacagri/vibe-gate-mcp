@@ -22,6 +22,7 @@ Limits (SSoT: `SEMANTIC_DIFF_SOURCE_FILES` in `src/constants.ts`):
 - Max **10** paths per call
 - Max **1 MiB** per file
 - Max **5 MiB** total
+- The resolved payload must also stay under **500,000 characters**; the same limit applies to inline payloads and payload files.
 
 Paths must be **relative to `VIBE_WORKSPACE_ROOT`**. Absolute paths and `..` traversal are rejected.
 
@@ -43,6 +44,14 @@ Write the same FILE:…CONTENT: string to a UTF-8 file under the workspace (raw 
 ## Inline `semanticDiff`
 
 Same FILE:…CONTENT: string as the tool argument. Prefer `files[]`.
+
+## Critic-requested context
+
+On a later review round, the MCP reads paths from the previous Critic response's `REQUEST:` lines under `VIBE_WORKSPACE_ROOT`. Paths are subject to workspace and symlink checks. Each request is limited to 10 files, 1 MiB per file, and 120 context lines; the combined requested context is limited to 500,000 characters. Use a narrower line range when a file needs more context.
+
+The review loop allows three rounds. A rejected or blocked third round produces a deadlock case for human review.
+
+Source payloads are submitted again with each review round and are not stored in `.vibe/review-session.json`.
 
 ## Payload format (what the Critic sees)
 

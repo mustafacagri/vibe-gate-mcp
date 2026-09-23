@@ -241,12 +241,38 @@ export function parseVerificationsFromResponse(response: string, existingConcern
   return verifications
 }
 
+function splitRequestedPath(part: string): { filePath: string; remainder: string } | null {
+  let remainder = part.trim()
+  if (!remainder) return null
+
+  if (remainder.startsWith('"') || remainder.startsWith("'")) {
+    const quote = remainder[0]
+    const closingQuote = remainder.indexOf(quote, 1)
+    if (closingQuote < 2) return null
+    const filePath = remainder.slice(1, closingQuote)
+    remainder = remainder.slice(closingQuote + 1).trim()
+    return { filePath, remainder }
+  }
+
+  const firstSpace = remainder.search(/\s/)
+  const filePath = firstSpace === -1 ? remainder : remainder.slice(0, firstSpace)
+  remainder = firstSpace === -1 ? '' : remainder.slice(firstSpace).trim()
+  return { filePath, remainder }
+}
+
 function parseFileRequestPart(part: string): FileRequest | null {
-  const colonIndex = part.indexOf(':')
-  if (colonIndex === -1) return part ? { filePath: part } : null
-  const filePath = part.slice(0, colonIndex)
-  const lineRange = part.slice(colonIndex + 1)
-  return filePath ? { filePath, lineRange } : null
+  const split = splitRequestedPath(part)
+  if (!split) return null
+
+  let { filePath, remainder } = split
+  const pathRange = /:(\d+(?:-\d+)?)$/.exec(filePath)
+  const leadingRange = /^:(\d+(?:-\d+)?)(?:\s+|$)/.exec(remainder)
+  const lineRange = pathRange?.[1] ?? leadingRange?.[1]
+  if (pathRange) filePath = filePath.slice(0, -pathRange[0].length)
+  else if (leadingRange) remainder = remainder.slice(leadingRange[0].length).trim()
+  if (!filePath) return null
+
+  return { filePath, lineRange, reason: remainder || undefined }
 }
 
 export function parseRequestsFromResponse(response: string): FileRequest[] {

@@ -70,6 +70,8 @@ OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 # CRITIC_MODEL=gpt-5.4  # optional, default
 ```
 
+Vibe-Gate sends OpenAI requests through the Responses API. `CRITIC_MODEL` is passed through without a Vibe-Gate model allowlist, so you can select a newer model such as `gpt-6-luna` without waiting for a package update. The model must be available to your OpenAI account and support the Responses API.
+
 ### Anthropic
 
 ```env

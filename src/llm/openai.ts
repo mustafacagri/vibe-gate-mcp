@@ -6,15 +6,9 @@ import OpenAI from 'openai'
 import { LLM_MAX_TOKENS } from '@/constants'
 import type { LLMMessage, LLMResponse } from '@/llm/types'
 
-const ROLE_MAP = {
-  user: 'user',
-  assistant: 'assistant',
-  system: 'system'
-} as const
-
-function toOpenAIMessages(messages: LLMMessage[]): OpenAI.ChatCompletionMessageParam[] {
+function toOpenAIInput(messages: LLMMessage[]): OpenAI.Responses.ResponseInputItem[] {
   return messages.map(m => ({
-    role: ROLE_MAP[m.role as keyof typeof ROLE_MAP],
+    role: m.role,
     content: m.content
   }))
 }
@@ -24,21 +18,18 @@ export function createOpenAIProvider(apiKey: string, model: string) {
 
   return {
     async complete(messages: LLMMessage[]): Promise<LLMResponse> {
-      const completion = await client.chat.completions.create({
+      const response = await client.responses.create({
         model,
-        max_completion_tokens: LLM_MAX_TOKENS,
-        temperature: 0.3, // Low temperature for consistent, deterministic responses
-        messages: toOpenAIMessages(messages)
+        max_output_tokens: LLM_MAX_TOKENS,
+        input: toOpenAIInput(messages)
       })
-      const choice = completion.choices[0]
-      const content = choice?.message?.content ?? ''
-      const usage = completion.usage
+      const usage = response.usage
         ? {
-            promptTokens: completion.usage.prompt_tokens,
-            completionTokens: completion.usage.completion_tokens
+            promptTokens: response.usage.input_tokens,
+            completionTokens: response.usage.output_tokens
           }
         : undefined
-      return { content, usage }
+      return { content: response.output_text, usage }
     }
   }
 }

@@ -4,7 +4,12 @@
  */
 
 import { readFile, stat } from 'node:fs/promises'
-import { SEMANTIC_DIFF_PAYLOAD_MARKERS, SEMANTIC_DIFF_SOURCE_FILES, WORKSPACE_PATH_KIND } from '@/constants'
+import {
+  REVIEW_INPUT_LIMITS,
+  SEMANTIC_DIFF_PAYLOAD_MARKERS,
+  SEMANTIC_DIFF_SOURCE_FILES,
+  WORKSPACE_PATH_KIND
+} from '@/constants'
 import {
   resolveSafePathInWorkspace,
   verifyCanonicalPathUnderWorkspace,
@@ -45,9 +50,10 @@ function mapPathError(code: ResolveSemanticDiffErrorCode, message: string): Buil
   return { ok: false, code: code as BuildSemanticDiffFromFilesErrorCode, message }
 }
 
-function formatFileBlock(relativePath: string, content: string): string {
+export function formatSemanticDiffFileBlock(relativePath: string, content: string, truncated = false): string {
   const body = content.endsWith('\n') ? content : `${content}\n`
-  return `${SEMANTIC_DIFF_PAYLOAD_MARKERS.FILE_LINE_PREFIX}${relativePath}\n${SEMANTIC_DIFF_PAYLOAD_MARKERS.CONTENT_LINE}\n${body}`
+  const note = truncated ? `[Context limited to ${REVIEW_INPUT_LIMITS.MAX_REQUESTED_CONTEXT_LINES} lines.]\n` : ''
+  return `${SEMANTIC_DIFF_PAYLOAD_MARKERS.FILE_LINE_PREFIX}${relativePath}\n${SEMANTIC_DIFF_PAYLOAD_MARKERS.CONTENT_LINE}\n${body}${note}`
 }
 
 function validateFilesArray(paths: string[]): BuildSemanticDiffFromFilesResult | null {
@@ -73,7 +79,9 @@ async function assertReadableSourceFile(
   relativePath: string,
   absolutePath: string,
   totalBytesSoFar: number
-): Promise<{ ok: true; nextTotalBytes: number } | { ok: false; result: BuildSemanticDiffFromFilesResult }> {
+): Promise<
+  { ok: true; nextTotalBytes: number; canonicalPath: string } | { ok: false; result: BuildSemanticDiffFromFilesResult }
+> {
   let st
   try {
     st = await stat(absolutePath)
@@ -128,7 +136,7 @@ async function assertReadableSourceFile(
     return { ok: false, result: mapPathError(canonical.code, canonical.message) }
   }
 
-  return { ok: true, nextTotalBytes }
+  return { ok: true, nextTotalBytes, canonicalPath: canonical.canonicalPath }
 }
 
 async function readSourceFileContent(
@@ -181,10 +189,10 @@ export async function buildSemanticDiffFromSourceFiles(
     if (!sizeCheck.ok) return sizeCheck.result
     totalBytes = sizeCheck.nextTotalBytes
 
-    const read = await readSourceFileContent(pathResult.absolutePath, relativePath)
+    const read = await readSourceFileContent(sizeCheck.canonicalPath, relativePath)
     if (!read.ok) return read.result
 
-    blocks.push(formatFileBlock(relativePath, read.content))
+    blocks.push(formatSemanticDiffFileBlock(relativePath, read.content))
     filesLoaded.push(relativePath)
   }
 

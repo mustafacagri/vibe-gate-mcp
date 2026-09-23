@@ -48,7 +48,10 @@ export async function verifyCanonicalPathUnderWorkspace(
   workspaceRoot: string,
   absolutePath: string,
   pathKind: WorkspacePathKind = WORKSPACE_PATH_KIND.SEMANTIC_DIFF_PAYLOAD
-): Promise<{ ok: true } | { ok: false; code: 'PATH_OUTSIDE_WORKSPACE' | 'REALPATH_FAILED'; message: string }> {
+): Promise<
+  | { ok: true; canonicalPath: string }
+  | { ok: false; code: 'PATH_OUTSIDE_WORKSPACE' | 'REALPATH_FAILED'; message: string }
+> {
   let rootReal: string
   let fileReal: string
   try {
@@ -70,7 +73,7 @@ export async function verifyCanonicalPathUnderWorkspace(
     }
   }
 
-  return { ok: true }
+  return { ok: true, canonicalPath: fileReal }
 }
 
 /**
@@ -189,7 +192,7 @@ export async function loadSemanticDiffFromWorkspacePath(
 
   let raw: string
   try {
-    raw = await readFile(absolutePath, 'utf8')
+    raw = await readFile(canonical.canonicalPath, 'utf8')
   } catch {
     return {
       ok: false,
