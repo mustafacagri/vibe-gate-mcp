@@ -63,6 +63,12 @@ describe('submitPhaseReviewInputSchema', () => {
     expect(r.success).toBe(false)
   })
 
+  it('accepts readOnly and rejects invalid types', () => {
+    const args = { phaseId: 'x', report: 'r', files: ['a.ts'] }
+    expect(submitPhaseReviewInputSchema.safeParse({ ...args, readOnly: true }).success).toBe(true)
+    expect(submitPhaseReviewInputSchema.safeParse({ ...args, readOnly: 'true' }).success).toBe(false)
+  })
+
   it('accepts updateStatus flag', () => {
     const r = submitPhaseReviewInputSchema.safeParse({
       phaseId: 'mcp-smoke-x',
@@ -109,11 +115,13 @@ describe('SUBMIT_PHASE_REVIEW_SCHEMA ListTools shape', () => {
         'semanticDiff',
         'semanticDiffPath',
         'updateStatus',
+        'readOnly',
         'dependencies',
         'round',
         'logToDebt'
       ])
     )
+    expect(props.readOnly).toMatchObject({ type: 'boolean' })
     expect(required).toEqual(['phaseId', 'report'])
     expect(submitPhaseReviewFieldsSchema).toBe(SUBMIT_PHASE_REVIEW_SCHEMA.inputSchema)
   })

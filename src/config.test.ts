@@ -31,7 +31,7 @@ describe('config', () => {
     it('loads default config when no environment variables are set', () => {
       const config = loadConfig()
       expect(config).toEqual({
-        criticProvider: PROVIDERS.OPENAI,
+        criticProvider: undefined,
         criticModel: undefined,
         criticPersona: PERSONAS.CLEAN_CODE_MONK,
         openaiApiKey: undefined,

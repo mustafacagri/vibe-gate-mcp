@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-10-01
+
+### Fixed
+
+- Add optional `readOnly: true` to phase reviews to prevent all workspace state, session, debt and deadlock writes while retaining genuine verdicts.
+- Enforce ten actual full source content slots across every payload carrier and additional Critic requests; reject document/data endpoints and malformed corpus before review.
+- Read complete requested source files without silently truncating line ranges or tails.
+
+## [0.1.8] - 2026-09-24
+
+### Fixed
+
+- Resolve explicitly selected CLI names through Windows `PATH` and `PATHEXT` before spawning, including Cursor's `agent.cmd` and legacy `cursor-agent.cmd` shims.
+- Launch Windows `.cmd` and `.bat` shims through `cmd.exe` while keeping native executables on the direct spawn path.
+
+### Tests
+
+- Cover Windows `PATHEXT` resolution for explicit `agent` and `cursor-agent` commands and safely quoted batch-shim invocation.
+
+## [0.1.7] - 2026-09-24
+
+### Fixed
+
+- Detect and launch Windows `.cmd` and `.bat` CLI shims through `cmd.exe` while keeping native executables on the direct spawn path.
+
+### Tests
+
+- Cover Windows `PATHEXT` shim resolution and safely quoted batch-shim invocation.
+
+## [0.1.6] - 2026-09-24
+
+### Added
+
+- Auto-detect an installed local CLI when `CRITIC_PROVIDER` is unset and report the selected CLI in the first review response.
+
+### Fixed
+
+- Use Cursor's current `agent` command by default and fall back to the legacy `cursor-agent` command when it is unavailable.
+
+### Tests
+
+- Cover local CLI auto-detection and Cursor Agent's legacy executable fallback.
+
 ## [0.1.5] - 2026-09-23
 
 ### Fixed

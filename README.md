@@ -6,7 +6,7 @@ An **Adversarial Quality Gate** for AI-assisted IDEs: the IDE agent and a Critic
 
 ### 1. Choose a Critic provider
 
-Use a direct API provider with its key, or use a local CLI that is already installed and signed in. Local CLI providers do not need a separate provider API key.
+Use a direct API provider with its key, or use a local CLI that is already installed and signed in. Local CLI providers do not need a separate provider API key. If `CRITIC_PROVIDER` is omitted, Vibe-Gate selects the first installed local CLI in this order: Codex, Claude Code, Cursor Agent, then OpenCode CLI. OpenCode CLI moves to the front when `CRITIC_MODEL` is in `provider/model` form. The first review response includes a notice naming the selected CLI. If none is found, OpenAI remains the default and requires `OPENAI_API_KEY`. Set `CRITIC_PROVIDER` to choose explicitly.
 
 Copy from the package’s [`.env.example`](.env.example):
 
@@ -40,8 +40,10 @@ OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 | OpenCode      | `opencode`        | `OPENCODE_API_KEY` (+ optional `OPENCODE_PLAN`) |
 | Codex CLI     | `codex-cli`       | Existing `codex login` session                  |
 | Claude Code   | `claude-code`     | Existing Claude Code account session            |
-| Cursor Agent  | `cursor-agent`    | Existing `cursor-agent login` session           |
+| Cursor Agent  | `cursor-agent`    | Existing `agent login` session                  |
 | OpenCode CLI  | `opencode-cli`    | Saved `opencode auth login` credentials + model |
+
+For Cursor Agent, Vibe-Gate runs `agent` first and falls back to the legacy `cursor-agent` executable if the primary command is unavailable.
 
 `opencode` is still the separate Zen/Go HTTP provider and needs `OPENCODE_API_KEY`. `opencode-cli` runs the local CLI and requires a `provider/model` value in `CRITIC_MODEL`; see the CLI guide for details.
 
@@ -128,3 +130,9 @@ Probes: `updateStatus: false` or `phaseId` prefixes `mcp-smoke-` / `vibe-gate-pr
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)             | Stale MCP, path errors    |
 | [docs/project/VARIABLES.md](docs/project/VARIABLES.md)         | Env SSoT                  |
 | [examples/](examples/)                                         | Cursor mcp.json templates |
+
+## Read-only review and full source slot limit
+
+Set `readOnly: true` on `submit_phase_review` for a check that must leave the workspace untouched. It overrides `updateStatus: true` and prevents session clearing/saving, status updates, debt appends, conflict counter updates and deadlock case writes. Verdicts and concern verification still follow the ordinary review rules; deadlock case data is returned without saving it. Existing matching sessions can be read on later rounds, but read-only calls do not save a new round. `logToDebt` still expresses acceptance of debt when required, without writing the log. The default is `false`. `updateStatus: false` alone only disables phase status updates.
+
+Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers must positively classify their selected source endpoints and supply full source bodies rather than patches or summaries.

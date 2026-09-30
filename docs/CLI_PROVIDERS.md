@@ -6,12 +6,16 @@ The CLI is installed locally, but its model request still goes to the provider. 
 
 ## Supported CLIs
 
-| `CRITIC_PROVIDER` | Command        | Sign in                                        | Model selection                                    |
-| ----------------- | -------------- | ---------------------------------------------- | -------------------------------------------------- |
-| `codex-cli`       | `codex`        | `codex login`                                  | Optional `CRITIC_MODEL`                            |
-| `claude-code`     | `claude`       | `claude auth login`                            | Optional `CRITIC_MODEL`                            |
-| `cursor-agent`    | `cursor-agent` | `cursor-agent login`                           | Optional `CRITIC_MODEL`                            |
-| `opencode-cli`    | `opencode`     | `opencode auth login` or `/connect` in its TUI | Required `CRITIC_MODEL` in `provider/model` format |
+When `CRITIC_PROVIDER` is empty or unset, Vibe-Gate checks local CLI executables in this order: Codex (`codex`), Claude Code (`claude`), Cursor Agent (`agent`, then legacy `cursor-agent`), and OpenCode CLI (`opencode`). OpenCode CLI is considered only with a `provider/model` `CRITIC_MODEL`, and that model format moves it to the front of the default order. Configured `*_CLI_PATH` values are checked before default PATH names, using the same provider order. The first tool response reports the selected CLI in `providerNotice`. Detection checks whether the executable is available; it does not verify that the CLI is signed in. If the selected CLI needs login, Vibe-Gate returns its error and does not switch to another account or service. If no local CLI is found, Vibe-Gate retains its OpenAI default and requires `OPENAI_API_KEY`. Set `CRITIC_PROVIDER` to select a provider explicitly.
+
+On Windows, command names are resolved through `PATH` and `PATHEXT` for `.COM`, `.EXE`, `.BAT`, and `.CMD` files whether `CRITIC_PROVIDER` is automatic or explicitly set. Batch shims (`.bat` and `.cmd`) run through `cmd.exe`; native executables run directly.
+
+| `CRITIC_PROVIDER` | Command                                   | Sign in                                        | Model selection                                    |
+| ----------------- | ----------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| `codex-cli`       | `codex`                                   | `codex login`                                  | Optional `CRITIC_MODEL`                            |
+| `claude-code`     | `claude`                                  | `claude auth login`                            | Optional `CRITIC_MODEL`                            |
+| `cursor-agent`    | `agent` (legacy fallback: `cursor-agent`) | `agent login` (legacy: `cursor-agent login`)   | Optional `CRITIC_MODEL`                            |
+| `opencode-cli`    | `opencode`                                | `opencode auth login` or `/connect` in its TUI | Required `CRITIC_MODEL` in `provider/model` format |
 
 If `CRITIC_MODEL` is omitted, Vibe-Gate leaves model selection to Codex, Claude Code, or Cursor Agent. Use model IDs accepted by the selected CLI when setting an override. Codex is deliberately started with user configuration ignored, so it uses its built-in default model rather than a custom model from `config.toml`; the saved login remains available. OpenCode CLI requires `CRITIC_MODEL` because Vibe-Gate isolates its user configuration.
 
@@ -48,8 +52,8 @@ Vibe-Gate uses print mode and safe mode, disables built-in tools and MCP tools, 
 Install Cursor CLI and sign in to your Cursor account:
 
 ```sh
-cursor-agent login
-cursor-agent status
+agent login
+agent status
 ```
 
 Then configure Vibe-Gate:
@@ -57,7 +61,7 @@ Then configure Vibe-Gate:
 ```env
 CRITIC_PROVIDER=cursor-agent
 # Optional when PATH in the IDE differs from your terminal:
-# CURSOR_AGENT_CLI_PATH=/absolute/path/to/cursor-agent
+# CURSOR_AGENT_CLI_PATH=/absolute/path/to/agent
 # Optional model override:
 # CRITIC_MODEL=gpt-5
 ```

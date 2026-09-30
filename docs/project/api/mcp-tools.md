@@ -117,3 +117,9 @@ Response: { success, path, message } | { success:false, code: HUMAN_CONFIRMATION
 ```json
 { "success": true, "path": ".vibe/preferences.log", "message": "Decision logged to preferences.log" }
 ```
+
+## Read-only review and full source slot limit
+
+Set `readOnly: true` on `submit_phase_review` for a check that must leave the workspace untouched. It overrides `updateStatus: true` and prevents session clearing/saving, status updates, debt appends, conflict counter updates and deadlock case writes. Verdicts and concern verification still follow the ordinary review rules; deadlock case data is returned without saving it. Existing matching sessions can be read on later rounds, but read-only calls do not save a new round. `logToDebt` still expresses acceptance of debt when required, without writing the log. The default is `false`. `updateStatus: false` alone only disables phase status updates.
+
+Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers must positively classify their selected source endpoints and supply full source bodies rather than patches or summaries.

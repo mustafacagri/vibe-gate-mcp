@@ -4,7 +4,7 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { z } from 'zod'
 import { loadConfig, getEffectiveModel } from '@/config'
 import {
@@ -39,7 +39,7 @@ import { getStatus, updatePhaseOnAccept, updateConflictCount } from '@/roadmap'
 import { shouldPersistPhaseStatus } from '@/roadmap/phase-status-policy'
 import { loadSemanticDiffFromWorkspacePath } from '@/utils/resolve-semantic-diff-from-path'
 import { buildSemanticDiffFromSourceFiles } from '@/utils/build-semantic-diff-from-files'
-import { createLLMProvider } from '@/llm'
+import { createLLMProvider, getProviderLabel, isCliProvider } from '@/llm'
 import { getPersonaPrompt, buildSystemPrompt } from '@/prompts'
 import { parseSemanticDiff } from '@/summarizer/parse-semantic-diff'
 import { extractProjectBlueprint } from '@/summarizer/extract-project-blueprint'
@@ -57,14 +57,52 @@ import {
 } from '@/utils/criticResponseParser'
 import { buildCriticResponse, checkTokenThreshold, requiresDebtLog } from '@/utils/responseBuilder'
 import { getErrorMessage } from '@/utils/error'
+import { validateSourceCorpus } from '@/utils/source-corpus'
 import { computeSemanticDiffLineHints } from '@/utils/semantic-diff-line-hints'
 import { getWorkspaceRoot } from '@/workspace'
 import { debugLog } from '@/utils/debug'
 import { readRequestedFiles } from '@/summarizer/read-changed-files'
-import type { LLMMessage } from '@/llm/types'
+import type { LLMMessage, LLMProvider } from '@/llm/types'
 import type { ReviewRound, ReviewSession } from '@/conflict-loop/types'
 
 type VerdictId = (typeof CRITIC_VERDICTS)[keyof typeof CRITIC_VERDICTS]
+
+let autoProviderNoticeSent = false
+
+function addAutoProviderNotice(
+  result: { content: Array<{ type: 'text'; text: string }> },
+  provider: LLMProvider,
+  providerWasInvoked: boolean
+): { content: Array<{ type: 'text'; text: string }> } {
+  if (
+    autoProviderNoticeSent ||
+    !providerWasInvoked ||
+    !provider.autoDetected ||
+    !provider.providerId ||
+    !provider.providerCommand
+  ) {
+    return result
+  }
+
+  const command = basename(provider.providerCommand)
+  const notice = `FYI: CRITIC_PROVIDER was not set; Vibe-Gate found ${getProviderLabel(provider.providerId)} (${command}) and is using it for this review.`
+  const [first, ...rest] = result.content
+  if (!first) return result
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(first.text)
+  } catch {
+    payload = { result: first.text }
+  }
+  const notifiedPayload =
+    typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+      ? { ...(payload as Record<string, unknown>), providerNotice: notice }
+      : { result: payload, providerNotice: notice }
+
+  autoProviderNoticeSent = true
+  return { ...result, content: [{ ...first, text: JSON.stringify(notifiedPayload) }, ...rest] }
+}
 
 /**
  * Build a structured history summary from prior rounds.
@@ -212,16 +250,18 @@ async function writeCaseFile(workspaceRoot: string, caseFile: CaseFile): Promise
 
 async function checkDeadlockEarly(
   workspaceRoot: string,
-  args: { phaseId: string; round?: number },
+  args: { phaseId: string; round?: number; readOnly?: boolean },
   session: ReviewSession | null,
   semanticDiffHints: string[]
 ): Promise<{ content: Array<{ type: 'text'; text: string }> } | null> {
   const round = args.round ?? DEFAULT_ROUND
   if (round > 1 && session?.phaseId === args.phaseId && session.round >= CONFLICT_LOOP.MAX_ROUNDS) {
-    await clearSession(workspaceRoot)
-    await updateConflictCount(workspaceRoot, 1)
+    if (!args.readOnly) {
+      await clearSession(workspaceRoot)
+      await updateConflictCount(workspaceRoot, 1)
+    }
     const caseFile = buildCaseFile(args.phaseId, session.round, session.history)
-    await writeCaseFile(workspaceRoot, caseFile)
+    if (!args.readOnly) await writeCaseFile(workspaceRoot, caseFile)
     return { content: [toTextContentWithHints({ ...caseFile, filesAnalyzed: 0 }, semanticDiffHints)] }
   }
   return null
@@ -321,7 +361,7 @@ async function runCriticReview(
 
   const round = args.round ?? DEFAULT_ROUND
   const personaPrompt = getPersonaPrompt(config.criticPersona)
-  const model = getEffectiveModel(config)
+  const model = getEffectiveModel(config, provider.providerId)
   const [status, contextBlockResult, rules, preferencesLog] = await Promise.all([
     getStatus(workspaceRoot),
     buildContextBlock(workspaceRoot, args.dependencies ?? [], args.semanticDiff),
@@ -330,7 +370,7 @@ async function runCriticReview(
   ])
 
   const enrichedContextBlock = contextBlockResult.context
-  let totalFilesRead = contextBlockResult.filesAnalyzed
+  let totalFilesRead = validateSourceCorpus(args.semanticDiff)
   let requestedContext = ''
 
   // Round 2+: Read files explicitly requested by the previous Critic response.
@@ -340,7 +380,7 @@ async function runCriticReview(
     if (hasRequestBlocks(previousCriticResponse)) {
       const requestedBlockResult = await readRequestedFiles(workspaceRoot, previousCriticResponse)
       requestedContext = requestedBlockResult.semanticDiff
-      totalFilesRead += requestedBlockResult.filesAnalyzed
+      totalFilesRead = validateSourceCorpus([args.semanticDiff, requestedContext].join('\n\n'))
     }
   }
 
@@ -373,6 +413,9 @@ async function runCriticReview(
   )
 
   const parsedVerdict = parseVerdictFromResponse(response.content)
+  const unresolvedRequest =
+    hasRequestBlocks(response.content) &&
+    (parsedVerdict === CRITIC_VERDICTS.ACCEPT || parsedVerdict === CRITIC_VERDICTS.CONCERNS_ADDRESSED)
   const completionTokens = response.usage?.completionTokens ?? 0
   const determined = determineVerdict(parsedVerdict, response.content, completionTokens)
   const { verdict, insufficientReview, structuredProseMismatch } = applyStructuredProseMismatchGate(
@@ -388,7 +431,7 @@ async function runCriticReview(
   const existingConcerns = session?.concerns ?? []
   const rawConcerns = parseConcernsFromResponse(response.content)
   // Option B fix: Filter out concerns citing files NOT in semanticDiff
-  const concerns = filterConcernsBySemanticDiff(rawConcerns, args.semanticDiff ?? '')
+  const concerns = filterConcernsBySemanticDiff(rawConcerns, [args.semanticDiff, requestedContext].join('\n\n'))
   const verifications = round > 1 ? parseVerificationsFromResponse(response.content, existingConcerns) : []
 
   const roundData: ReviewRound = {
@@ -405,7 +448,7 @@ async function runCriticReview(
     verdict,
     roundData,
     model,
-    insufficientReview,
+    insufficientReview: insufficientReview || unresolvedRequest,
     filesAnalyzed: totalFilesRead,
     structuredProseMismatch
   }
@@ -417,7 +460,11 @@ async function handleAcceptVerdict(
   args: SubmitPhaseReviewArgs,
   semanticDiffHints: string[]
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const statusResult = await tryUpdateStatusOnAccept(workspaceRoot, args.phaseId, args.updateStatus)
+  const statusResult = await tryUpdateStatusOnAccept(
+    workspaceRoot,
+    args.phaseId,
+    args.readOnly ? false : args.updateStatus
+  )
   if (statusResult.statusError) {
     return {
       content: [
@@ -435,7 +482,7 @@ async function handleAcceptVerdict(
       ]
     }
   }
-  await clearSession(workspaceRoot)
+  if (!args.readOnly) await clearSession(workspaceRoot)
   return {
     content: [
       toTextContentWithHints(
@@ -466,7 +513,7 @@ async function handleRejectOrContinue(
   for (const verification of verifications) {
     nextSession = verifyConcern(nextSession, verification)
   }
-  await writeSession(workspaceRoot, nextSession)
+  if (!args.readOnly) await writeSession(workspaceRoot, nextSession)
   const round = result.roundData.round
 
   // Promote REJECT/BLOCK → ACCEPT only when prior concerns existed and are all resolved.
@@ -481,10 +528,12 @@ async function handleRejectOrContinue(
   }
 
   if (round >= CONFLICT_LOOP.MAX_ROUNDS) {
-    await clearSession(workspaceRoot)
-    await updateConflictCount(workspaceRoot, 1)
+    if (!args.readOnly) {
+      await clearSession(workspaceRoot)
+      await updateConflictCount(workspaceRoot, 1)
+    }
     const caseFile = buildCaseFile(args.phaseId, round, nextSession.history, String(result.verdict))
-    await writeCaseFile(workspaceRoot, caseFile)
+    if (!args.readOnly) await writeCaseFile(workspaceRoot, caseFile)
     return {
       content: [toTextContentWithHints({ ...caseFile, filesAnalyzed: result.filesAnalyzed }, semanticDiffHints)]
     }
@@ -555,12 +604,17 @@ export const submitPhaseReviewFieldsSchema = z.object({
     ),
   semanticDiff: z
     .string()
-    .trim()
     .min(1)
     .max(REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS)
     .optional()
     .describe(
       'Inline FILE:...CONTENT: payload. Prefer files[]. Exactly one of: files | semanticDiffPath | semanticDiff. NOT git diff.'
+    ),
+  readOnly: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, do not write or delete workspace state, sessions, debt logs, conflict counts or case files. Overrides updateStatus. Default: false; no durable review round is saved.'
     ),
   updateStatus: z
     .boolean()
@@ -613,7 +667,7 @@ export type SubmitPhaseReviewInput = z.infer<typeof submitPhaseReviewInputSchema
 export const SUBMIT_PHASE_REVIEW_SCHEMA = {
   title: 'Submit Phase Review',
   description:
-    'IDE AI (Implementer) submits a phase completion report for Critic review. Prefer files[] (workspace-relative paths; MCP reads disk and builds FILE:...CONTENT:). Alternatives: semanticDiffPath or inline semanticDiff — exactly one. Set updateStatus:false for connectivity probes.',
+    'IDE AI (Implementer) submits a phase completion report for Critic review. Prefer files[] (workspace-relative paths; MCP reads disk and builds FILE:...CONTENT:). Alternatives: semanticDiffPath or inline semanticDiff — exactly one. If CRITIC_PROVIDER is unset, Vibe-Gate selects the first installed local CLI and includes providerNotice in the first result. Set readOnly:true for checks that must not change the workspace. updateStatus:false only skips phase status.',
   inputSchema: submitPhaseReviewFieldsSchema
 } as const
 
@@ -626,6 +680,7 @@ export type SubmitPhaseReviewArgs = {
   round?: number
   logToDebt?: { subject: string; rationale: string }
   updateStatus?: boolean
+  readOnly?: boolean
 }
 
 const INSUFFICIENT_REVIEW_GUIDANCE = `
@@ -759,7 +814,7 @@ async function processVerdict(
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   // Guard: INSUFFICIENT_REVIEW
   if (reviewResult.insufficientReview) {
-    await writeInsufficientReviewSession(workspaceRoot, session, args.phaseId, reviewResult)
+    if (!args.readOnly) await writeInsufficientReviewSession(workspaceRoot, session, args.phaseId, reviewResult)
     return handleInsufficientReview(reviewResult, semanticDiffHints)
   }
 
@@ -824,7 +879,8 @@ async function handleDebtVerdict(
     return handleDebtWithoutLog(reviewResult, round, semanticDiffHints)
   }
 
-  if (args.logToDebt) await appendToDebt(workspaceRoot, args.phaseId, args.logToDebt.subject, args.logToDebt.rationale)
+  if (args.logToDebt && !args.readOnly)
+    await appendToDebt(workspaceRoot, args.phaseId, args.logToDebt.subject, args.logToDebt.rationale)
 
   return null
 }
@@ -907,7 +963,7 @@ async function resolveSemanticDiffInput(
     semanticDiff = loaded.semanticDiff
     debugLog(`semanticDiff loaded from file: ${loaded.resolvedFromPath}`)
   } else {
-    semanticDiff = input.semanticDiff!.trim()
+    semanticDiff = input.semanticDiff!
   }
 
   if (semanticDiff.length > REVIEW_INPUT_LIMITS.MAX_SEMANTIC_DIFF_CHARS) {
@@ -917,6 +973,11 @@ async function resolveSemanticDiffInput(
     }
   }
 
+  try {
+    validateSourceCorpus(semanticDiff)
+  } catch (err) {
+    return { ok: false, error: getErrorMessage(err) }
+  }
   return { ok: true, semanticDiff }
 }
 
@@ -959,34 +1020,51 @@ export async function handleSubmitPhaseReview(
     dependencies: input.dependencies,
     round: input.round,
     logToDebt: input.logToDebt,
-    updateStatus: input.updateStatus
+    updateStatus: input.updateStatus,
+    readOnly: input.readOnly
   }
   const semanticDiffHints = computeSemanticDiffLineHints(semanticDiff)
   // FIX: Only clear session for round 1 (fresh start).
   // Multi-round conflict loop requires session persistence across rounds.
   const round = args.round ?? DEFAULT_ROUND
-  if (round <= 1) await clearSession(workspaceRoot)
-  const session = await readSession(workspaceRoot)
+  if (round <= 1 && !args.readOnly) await clearSession(workspaceRoot)
+  const storedSession = round > 1 ? await readSession(workspaceRoot) : null
+  const session = storedSession?.phaseId === args.phaseId ? storedSession : null
   const deadlockResult = await checkDeadlockEarly(workspaceRoot, args, session, semanticDiffHints)
   if (deadlockResult) return deadlockResult
 
+  let providerWasInvoked = false
+  const trackedProvider: LLMProvider = {
+    ...provider,
+    async complete(messages) {
+      providerWasInvoked = true
+      return provider.complete(messages)
+    }
+  }
+
   try {
-    const reviewResult = await runCriticReview(workspaceRoot, args, session, config, provider)
-    return processVerdict(reviewResult, session, workspaceRoot, args, round, semanticDiffHints)
+    const reviewResult = await runCriticReview(workspaceRoot, args, session, config, trackedProvider)
+    const result = await processVerdict(reviewResult, session, workspaceRoot, args, round, semanticDiffHints)
+    return addAutoProviderNotice(result, provider, providerWasInvoked)
   } catch (err: unknown) {
     const errorMessage = getErrorMessage(err)
     const errorObj = err as Record<string, unknown>
-    if (errorMessage.includes('401') || errorObj?.status === 401 || errorObj?.statusCode === 401) {
-      return {
-        content: [
-          toTextContent({
-            error: 'Authentication failed (401 Unauthorized). Invalid or missing API keys.',
-            details:
-              'Vibe-Gate reads keys in this order:\n1. Process Environment (MCP config, shell env)\n2. Workspace .env (if VIBE_WORKSPACE_ROOT is set)\n3. Package .env (where vibe-gate-mcp is installed)\n\nPlease ensure your key is correct.'
-          })
-        ]
-      }
+    const isLocalCli = provider.providerId !== undefined && isCliProvider(provider.providerId)
+    if (!isLocalCli && (errorMessage.includes('401') || errorObj?.status === 401 || errorObj?.statusCode === 401)) {
+      return addAutoProviderNotice(
+        {
+          content: [
+            toTextContent({
+              error: 'Authentication failed (401 Unauthorized). Invalid or missing API keys.',
+              details:
+                'Vibe-Gate reads keys in this order:\n1. Process Environment (MCP config, shell env)\n2. Workspace .env (if VIBE_WORKSPACE_ROOT is set)\n3. Package .env (where vibe-gate-mcp is installed)\n\nPlease ensure your key is correct.'
+            })
+          ]
+        },
+        provider,
+        providerWasInvoked
+      )
     }
-    return { content: [toTextContent({ error: errorMessage })] }
+    return addAutoProviderNotice({ content: [toTextContent({ error: errorMessage })] }, provider, providerWasInvoked)
   }
 }

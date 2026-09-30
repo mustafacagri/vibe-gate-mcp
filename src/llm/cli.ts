@@ -14,10 +14,13 @@ import {
   CLI_PROVIDER_MAX_STDERR_BYTES,
   CLI_PROVIDER_MAX_STDOUT_BYTES,
   CLI_STRIPPED_ENV_KEYS,
+  CLI_DEFAULT_COMMANDS,
+  CURSOR_AGENT_LEGACY_COMMAND,
   PROVIDERS,
   type CliProviderId
 } from '@/constants'
 import type { LLMMessage, LLMResponse } from '@/llm/types'
+import { buildCliSpawnTarget, findExecutable } from '@/llm/cli-command'
 
 interface CliProviderOptions {
   id: CliProviderId
@@ -25,6 +28,7 @@ interface CliProviderOptions {
   command: string
   model: string
   timeoutMs: number
+  fallbackCommands?: readonly string[]
 }
 
 interface SpawnOptions {
@@ -41,7 +45,8 @@ interface SpawnOptions {
 class CliExecutionError extends Error {
   constructor(
     message: string,
-    readonly stdout: string
+    readonly stdout: string,
+    readonly code?: string
   ) {
     super(message)
     this.name = 'CliExecutionError'
@@ -98,11 +103,15 @@ function runCli({
   keepCredentialEnvKeys
 }: SpawnOptions): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const childEnv = createChildEnv(env, keepCredentialEnvKeys)
+    const executable = findExecutable(command, { pathValue: childEnv.PATH ?? childEnv.Path }) ?? command
+    const target = buildCliSpawnTarget(executable, args)
+    const child = spawn(target.command, target.args, {
       cwd,
-      env: createChildEnv(env, keepCredentialEnvKeys),
+      env: childEnv,
       shell: false,
       windowsHide: true,
+      ...(target.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       stdio: ['pipe', 'pipe', 'pipe']
     })
 
@@ -145,7 +154,7 @@ function runCli({
       const errorCode = (error as Error & { code?: string }).code
       const detail =
         errorCode === 'ENOENT' ? `Install ${label} or set its executable path in the MCP environment.` : error.message
-      finish(new CliExecutionError(`${label} CLI could not be started. ${detail}`, stdout.toString('utf8')))
+      finish(new CliExecutionError(`${label} CLI could not be started. ${detail}`, stdout.toString('utf8'), errorCode))
     })
 
     child.on('close', (code, signal) => {
@@ -172,6 +181,19 @@ function runCli({
     })
     child.stdin.end(input)
   })
+}
+
+async function runCliWithFallback(options: SpawnOptions, fallbackCommands: readonly string[] = []): Promise<string> {
+  const commands = [options.command, ...fallbackCommands]
+  for (const [index, command] of commands.entries()) {
+    try {
+      return await runCli({ ...options, command })
+    } catch (error) {
+      const canTryNext = error instanceof CliExecutionError && error.code === 'ENOENT' && index < commands.length - 1
+      if (!canTryNext) throw error
+    }
+  }
+  throw new Error(`${options.label} CLI could not be started.`)
 }
 
 function parseCodexOutput(stdout: string): string {
@@ -477,14 +499,17 @@ async function completeCursorAgent(options: CliProviderOptions, cwd: string, inp
     'json',
     ...modelArgs(options.model, '--model')
   ]
-  const stdout = await runCli({
-    command: options.command,
-    args,
-    cwd,
-    input,
-    timeoutMs: options.timeoutMs,
-    label: options.label
-  })
+  const stdout = await runCliWithFallback(
+    {
+      command: options.command,
+      args,
+      cwd,
+      input,
+      timeoutMs: options.timeoutMs,
+      label: options.label
+    },
+    options.fallbackCommands
+  )
   return { content: parseJsonResult(stdout, options.label) }
 }
 
@@ -605,8 +630,20 @@ export function createClaudeCodeProvider(command: string, model: string, timeout
   return createCliProvider({ id: PROVIDERS.CLAUDE_CODE, label: 'Claude Code', command, model, timeoutMs })
 }
 
-export function createCursorAgentProvider(command: string, model: string, timeoutMs: number) {
-  return createCliProvider({ id: PROVIDERS.CURSOR_AGENT, label: 'Cursor Agent', command, model, timeoutMs })
+export function createCursorAgentProvider(
+  command: string,
+  model: string,
+  timeoutMs: number,
+  allowLegacyFallback = command === CLI_DEFAULT_COMMANDS[PROVIDERS.CURSOR_AGENT]
+) {
+  return createCliProvider({
+    id: PROVIDERS.CURSOR_AGENT,
+    label: 'Cursor Agent',
+    command,
+    model,
+    timeoutMs,
+    fallbackCommands: allowLegacyFallback ? [CURSOR_AGENT_LEGACY_COMMAND] : []
+  })
 }
 
 export function createOpenCodeCliProvider(command: string, model: string, timeoutMs: number) {

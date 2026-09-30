@@ -34,7 +34,7 @@ const personaSchema = z.enum([PERSONAS.SECURITY_FIRST, PERSONAS.PERFORMANCE_FREA
 
 export const configSchema = z
   .object({
-    criticProvider: providerSchema.default(PROVIDERS.OPENAI),
+    criticProvider: providerSchema.optional(),
     criticModel: z.string().min(1).optional(),
     criticPersona: personaSchema.default(PERSONAS.CLEAN_CODE_MONK),
     openaiApiKey: z.string().optional(),
@@ -77,7 +77,7 @@ function getEnv(key: string): string | undefined {
 
 export function loadConfig(): Config {
   const raw = {
-    criticProvider: getEnv(ENV_KEYS.CRITIC_PROVIDER) ?? PROVIDERS.OPENAI,
+    criticProvider: getEnv(ENV_KEYS.CRITIC_PROVIDER)?.trim() || undefined,
     criticModel: getEnv(ENV_KEYS.CRITIC_MODEL),
     criticPersona: getEnv(ENV_KEYS.CRITIC_PERSONA) ?? PERSONAS.CLEAN_CODE_MONK,
     openaiApiKey: getEnv(ENV_KEYS.OPENAI_API_KEY),
@@ -95,7 +95,7 @@ export function loadConfig(): Config {
   return configSchema.parse(raw)
 }
 
-export function getEffectiveModel(config: Config): string {
+export function getEffectiveModel(config: Config, providerId?: ProviderId): string {
   if (config.criticModel) return config.criticModel
-  return DEFAULT_MODELS[config.criticProvider as ProviderId]
+  return DEFAULT_MODELS[providerId ?? config.criticProvider ?? PROVIDERS.OPENAI]
 }

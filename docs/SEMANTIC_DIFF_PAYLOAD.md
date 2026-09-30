@@ -47,7 +47,7 @@ Same FILE:…CONTENT: string as the tool argument. Prefer `files[]`.
 
 ## Critic-requested context
 
-On a later review round, the MCP reads paths from the previous Critic response's `REQUEST:` lines under `VIBE_WORKSPACE_ROOT`. Paths are subject to workspace and symlink checks. Each request is limited to 10 files, 1 MiB per file, and 120 context lines; the combined requested context is limited to 500,000 characters. Use a narrower line range when a file needs more context.
+On a later review round, the MCP reads paths from the previous Critic response's `REQUEST:` lines under `VIBE_WORKSPACE_ROOT`. Paths are subject to workspace and symlink checks. Requested context uses complete source files (including when a line range was requested), up to 1 MiB per file. Initial and requested blocks share the ten-slot and 500,000-character limits.
 
 The review loop allows three rounds. A rejected or blocked third round produces a deadlock case for human review.
 
@@ -83,3 +83,9 @@ By default ACCEPT writes `.vibe/status.json`. Skip pollution for probes:
 Set **`VIBE_WORKSPACE_ROOT`** to the **consumer project** root (Cursor: `${workspaceFolder}` in **project** `.cursor/mcp.json`). Do **not** hardcode a single repo path in user-level MCP config — that breaks other projects.
 
 See `examples/cursor-mcp.project.json` and [INSTALLATION.md](INSTALLATION.md).
+
+## Read-only review and full source slot limit
+
+Set `readOnly: true` on `submit_phase_review` for a check that must leave the workspace untouched. It overrides `updateStatus: true` and prevents session clearing/saving, status updates, debt appends, conflict counter updates and deadlock case writes. Verdicts and concern verification still follow the ordinary review rules; deadlock case data is returned without saving it. Existing matching sessions can be read on later rounds, but read-only calls do not save a new round. `logToDebt` still expresses acceptance of debt when required, without writing the log. The default is `false`. `updateStatus: false` alone only disables phase status updates.
+
+Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers must positively classify their selected source endpoints and supply full source bodies rather than patches or summaries.

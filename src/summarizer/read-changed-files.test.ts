@@ -2,7 +2,6 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { REVIEW_INPUT_LIMITS } from '@/constants'
 import { readChangedFileContent, readRequestedFiles } from '@/summarizer/read-changed-files'
 
 describe('requested file context', () => {
@@ -20,22 +19,17 @@ describe('requested file context', () => {
     return workspace
   }
 
-  it('reads requested line ranges and reports when context is capped', async () => {
+  it('reads the complete source even when a range is requested', async () => {
     const workspace = await createWorkspace()
     await mkdir(join(workspace, 'src'))
     await writeFile(join(workspace, 'src/file.ts'), Array.from({ length: 200 }, (_, i) => `line-${i + 1}`).join('\n'))
 
     const requested = await readRequestedFiles(workspace, 'REQUEST: src/file.ts:40-42')
     expect(requested.filesAnalyzed).toBe(1)
-    expect(requested.semanticDiff).toContain('40 | line-40')
-    expect(requested.semanticDiff).toContain('42 | line-42')
-    expect(requested.semanticDiff).not.toContain('43 | line-43')
-
+    expect(requested.semanticDiff).toContain('line-1\nline-2')
+    expect(requested.semanticDiff).toContain('line-200')
     const wholeFileRequest = await readRequestedFiles(workspace, 'REQUEST: src/file.ts')
-    expect(wholeFileRequest.semanticDiff).toContain(
-      `Context limited to ${REVIEW_INPUT_LIMITS.MAX_REQUESTED_CONTEXT_LINES} lines`
-    )
-    expect(wholeFileRequest.semanticDiff).not.toContain('121 | line-121')
+    expect(wholeFileRequest.semanticDiff).toBe(requested.semanticDiff)
   })
 
   it('rejects sibling-prefix traversal and symlinks outside the workspace', async () => {

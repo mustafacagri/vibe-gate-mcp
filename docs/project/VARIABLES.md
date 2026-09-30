@@ -2,20 +2,20 @@
 
 Copy [`.env.example`](../../.env.example) → `.env` in the package directory **or** set the same keys in MCP `env`. Choose a direct API provider with its key, or a signed-in local CLI provider without a separate API key.
 
-## Required (pick one provider)
+## Provider selection (optional)
 
-| Variable                       | When required                  | Description                                                                                                                        |
-| ------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `CRITIC_PROVIDER`              | Recommended (default `openai`) | `openai` \| `anthropic` \| `google` \| `minimax` \| `opencode` \| `codex-cli` \| `claude-code` \| `cursor-agent` \| `opencode-cli` |
-| `OPENAI_API_KEY`               | `CRITIC_PROVIDER=openai`       | OpenAI API key                                                                                                                     |
-| `ANTHROPIC_API_KEY`            | `CRITIC_PROVIDER=anthropic`    | Anthropic API key                                                                                                                  |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | `CRITIC_PROVIDER=google`       | Google Gemini API key                                                                                                              |
-| `MINIMAX_API_KEY`              | `CRITIC_PROVIDER=minimax`      | MiniMax API key                                                                                                                    |
-| `OPENCODE_API_KEY`             | `CRITIC_PROVIDER=opencode`     | From https://opencode.ai/auth                                                                                                      |
-| `CODEX_CLI_PATH`               | `CRITIC_PROVIDER=codex-cli`    | Optional path to the `codex` executable                                                                                            |
-| `CLAUDE_CODE_CLI_PATH`         | `CRITIC_PROVIDER=claude-code`  | Optional path to the `claude` executable                                                                                           |
-| `CURSOR_AGENT_CLI_PATH`        | `CRITIC_PROVIDER=cursor-agent` | Optional path to the `cursor-agent` executable                                                                                     |
-| `OPENCODE_CLI_PATH`            | `CRITIC_PROVIDER=opencode-cli` | Optional path to the `opencode` executable                                                                                         |
+| Variable                       | When required                    | Description                                                                                                                        |
+| ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `CRITIC_PROVIDER`              | Optional (auto-detect local CLI) | `openai` \| `anthropic` \| `google` \| `minimax` \| `opencode` \| `codex-cli` \| `claude-code` \| `cursor-agent` \| `opencode-cli` |
+| `OPENAI_API_KEY`               | `CRITIC_PROVIDER=openai`         | OpenAI API key                                                                                                                     |
+| `ANTHROPIC_API_KEY`            | `CRITIC_PROVIDER=anthropic`      | Anthropic API key                                                                                                                  |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | `CRITIC_PROVIDER=google`         | Google Gemini API key                                                                                                              |
+| `MINIMAX_API_KEY`              | `CRITIC_PROVIDER=minimax`        | MiniMax API key                                                                                                                    |
+| `OPENCODE_API_KEY`             | `CRITIC_PROVIDER=opencode`       | From https://opencode.ai/auth                                                                                                      |
+| `CODEX_CLI_PATH`               | `CRITIC_PROVIDER=codex-cli`      | Optional path to the `codex` executable                                                                                            |
+| `CLAUDE_CODE_CLI_PATH`         | `CRITIC_PROVIDER=claude-code`    | Optional path to the `claude` executable                                                                                           |
+| `CURSOR_AGENT_CLI_PATH`        | `CRITIC_PROVIDER=cursor-agent`   | Optional path to the `agent` executable (`cursor-agent` is accepted for legacy installs)                                           |
+| `OPENCODE_CLI_PATH`            | `CRITIC_PROVIDER=opencode-cli`   | Optional path to the `opencode` executable                                                                                         |
 
 ## Optional
 

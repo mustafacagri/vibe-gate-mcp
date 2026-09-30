@@ -17,6 +17,7 @@ import {
 } from '@/constants'
 import { resolveSafePathInWorkspace, verifyCanonicalPathUnderWorkspace } from '@/utils/resolve-semantic-diff-from-path'
 import { parseRequestsFromResponse } from '@/utils/criticResponseParser'
+import { validateSourceCorpus } from '@/utils/source-corpus'
 import { formatSemanticDiffFileBlock } from '@/utils/build-semantic-diff-from-files'
 
 export interface FileContent {
@@ -115,24 +116,16 @@ export async function readRequestedFiles(
     throw new Error(`Critic requested more than ${SEMANTIC_DIFF_SOURCE_FILES.MAX_COUNT} files.`)
   }
 
-  const uniqueRequests = [
-    ...new Map(requests.map(request => [`${request.filePath}:${request.lineRange ?? ''}`, request])).values()
-  ]
+  if (requests.length === 0) throw new Error('Critic context request did not contain a resolvable source path.')
   const blocks: string[] = []
-  const files = new Set<string>()
   let totalChars = 0
 
-  for (const request of uniqueRequests) {
+  for (const request of requests) {
     if (request.filePath.length > REVIEW_INPUT_LIMITS.MAX_PATH_CHARS) {
       throw new Error(`Critic requested a path longer than ${REVIEW_INPUT_LIMITS.MAX_PATH_CHARS} characters.`)
     }
 
-    const file = await readChangedFileContent(
-      workspaceRoot,
-      request.filePath,
-      REVIEW_INPUT_LIMITS.MAX_REQUESTED_CONTEXT_LINES,
-      request.lineRange
-    )
+    const file = await readChangedFileContent(workspaceRoot, request.filePath, Number.MAX_SAFE_INTEGER)
     if (file.error) throw new Error(`Could not read requested file ${request.filePath}: ${file.error}`)
 
     const block = formatSemanticDiffFileBlock(request.filePath, file.content, file.truncated)
@@ -142,13 +135,10 @@ export async function readRequestedFiles(
     }
     blocks.push(block)
     totalChars = nextLength
-    files.add(request.filePath)
   }
 
-  return {
-    semanticDiff: blocks.join(SEMANTIC_DIFF_PAYLOAD_MARKERS.FILE_BLOCK_SEPARATOR),
-    filesAnalyzed: files.size
-  }
+  const semanticDiff = blocks.join(SEMANTIC_DIFF_PAYLOAD_MARKERS.FILE_BLOCK_SEPARATOR)
+  return { semanticDiff, filesAnalyzed: validateSourceCorpus(semanticDiff) }
 }
 
 function findQuotedString(line: string, startPos: number): string | null {

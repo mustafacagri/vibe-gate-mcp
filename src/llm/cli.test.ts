@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CLI_DEFAULT_MODEL, PROVIDERS } from '@/constants'
@@ -105,6 +105,17 @@ if (args[0] === 'exec') {
     return JSON.parse(await readFile(capturePath, 'utf8')) as CliCapture
   }
 
+  async function addFakeCommandToPath(name: string): Promise<string> {
+    const binDirectory = join(testRoot, 'bin')
+    await mkdir(binDirectory, { recursive: true })
+    const commandPath = join(binDirectory, name)
+    const script = (await readFile(fakeCommand, 'utf8')).replace(/^#!.*$/m, `#!${process.execPath}`)
+    await writeFile(commandPath, script, { mode: 0o700 })
+    await chmod(commandPath, 0o700)
+    process.env.PATH = binDirectory
+    return commandPath
+  }
+
   const messages = [
     { role: 'system' as const, content: 'Return findings.' },
     { role: 'user' as const, content: 'Review this sample diff.' }
@@ -122,6 +133,37 @@ if (args[0] === 'exec') {
     const config = configSchema.parse({ criticProvider: PROVIDERS.OPENCODE_CLI, criticModel: 'opencode-go/minimax-m3' })
     expect(createLLMProvider(config)).not.toBeNull()
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'auto-selects and invokes the first installed local CLI when no provider is set',
+    async () => {
+      const commandPath = await addFakeCommandToPath('codex')
+      const provider = createLLMProvider(configSchema.parse({}))
+
+      expect(provider).toMatchObject({
+        providerId: PROVIDERS.CODEX_CLI,
+        autoDetected: true,
+        providerCommand: commandPath
+      })
+      if (!provider) throw new Error('Expected a detected local CLI provider.')
+
+      const response = await provider.complete(messages)
+      expect(response.content).toBe('Codex review')
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'falls back from Cursor Agent `agent` to the legacy `cursor-agent` executable',
+    async () => {
+      await addFakeCommandToPath('cursor-agent')
+
+      const response = await createCursorAgentProvider('agent', CLI_DEFAULT_MODEL, 5_000).complete(messages)
+      const captured = await readCapture()
+
+      expect(response.content).toBe('Cursor review')
+      expect(captured.args).toEqual(expect.arrayContaining(['--trust', '--print', '--mode', 'ask']))
+    }
+  )
 
   it('uses Codex stdin, ephemeral mode, and a read-only sandbox while reusing CLI login', async () => {
     const response = await createCodexCliProvider(fakeCommand, CLI_DEFAULT_MODEL, 5_000).complete(messages)

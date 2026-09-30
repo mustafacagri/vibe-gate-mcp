@@ -76,9 +76,12 @@ export type CliProviderId =
 export const CLI_DEFAULT_COMMANDS: Record<CliProviderId, string> = {
   [PROVIDERS.CODEX_CLI]: 'codex',
   [PROVIDERS.CLAUDE_CODE]: 'claude',
-  [PROVIDERS.CURSOR_AGENT]: 'cursor-agent',
+  [PROVIDERS.CURSOR_AGENT]: 'agent',
   [PROVIDERS.OPENCODE_CLI]: 'opencode'
 } as const
+
+/** Previous Cursor CLI executable name retained for older installations. */
+export const CURSOR_AGENT_LEGACY_COMMAND = 'cursor-agent' as const
 
 /** Environment keys removed from local CLI processes unless a provider explicitly needs one. */
 export const CLI_STRIPPED_ENV_KEYS = [
@@ -364,7 +367,7 @@ export const CONFLICT_LOOP = {
 /** Error messages (SSoT) */
 export const ERROR_MESSAGES = {
   NO_LLM_PROVIDER:
-    'No LLM provider available. Set CRITIC_PROVIDER and either the required API key or an installed, authenticated local CLI.',
+    'No LLM provider available. Check CRITIC_PROVIDER and its required API key, or install and sign in to a supported local CLI.',
   STARTUP_FAILED: 'Vibe-Gate failed to start:'
 } as const
 

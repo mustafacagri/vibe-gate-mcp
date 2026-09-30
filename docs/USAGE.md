@@ -48,10 +48,11 @@ Vibe-Gate can call a direct API provider with an API key, or a local CLI using i
 
 ### Local CLI providers (no separate API key)
 
-Install and sign in to one supported CLI, then select it:
+Install and sign in to one supported CLI. If `CRITIC_PROVIDER` is unset, Vibe-Gate automatically uses the first available local CLI in this order: Codex, Claude Code, Cursor Agent, then OpenCode CLI. A `provider/model` `CRITIC_MODEL` moves OpenCode CLI to the front. The first review response identifies the selected CLI. Set `CRITIC_PROVIDER` to choose explicitly.
 
 ```env
-CRITIC_PROVIDER=codex-cli
+# Optional override; omit this to auto-detect a local CLI
+# CRITIC_PROVIDER=codex-cli
 # Or: claude-code | cursor-agent | opencode-cli
 # OpenCode CLI reuses its saved login and requires a model:
 # CRITIC_PROVIDER=opencode-cli
@@ -62,7 +63,7 @@ When `CRITIC_MODEL` is omitted, Codex, Claude Code, and Cursor Agent choose thei
 
 Full setup, security behavior, and alternatives we evaluated are in [CLI_PROVIDERS.md](CLI_PROVIDERS.md).
 
-### OpenAI (default)
+### OpenAI
 
 ```env
 CRITIC_PROVIDER=openai
@@ -143,3 +144,9 @@ See [docs/project/api/mcp-tools.md](project/api/mcp-tools.md) for full API docs.
 
 - [docs/VIBE-GATE.md](VIBE-GATE.md) — Purpose and flow
 - [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Common issues
+
+## Read-only review and full source slot limit
+
+Set `readOnly: true` on `submit_phase_review` for a check that must leave the workspace untouched. It overrides `updateStatus: true` and prevents session clearing/saving, status updates, debt appends, conflict counter updates and deadlock case writes. Verdicts and concern verification still follow the ordinary review rules; deadlock case data is returned without saving it. Existing matching sessions can be read on later rounds, but read-only calls do not save a new round. `logToDebt` still expresses acceptance of debt when required, without writing the log. The default is `false`. `updateStatus: false` alone only disables phase status updates.
+
+Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers must positively classify their selected source endpoints and supply full source bodies rather than patches or summaries.

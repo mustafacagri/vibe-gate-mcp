@@ -10,15 +10,15 @@
 
 1. For direct API providers, set its key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `MINIMAX_API_KEY`, or `OPENCODE_API_KEY`.
 2. For a local CLI provider, install the selected CLI, sign in with its account, and check the executable path.
-3. Ensure `CRITIC_PROVIDER` matches one of: `openai`, `anthropic`, `google`, `minimax`, `opencode`, `codex-cli`, `claude-code`, `cursor-agent`, or `opencode-cli`.
+3. If `CRITIC_PROVIDER` is set, ensure it matches one of: `openai`, `anthropic`, `google`, `minimax`, `opencode`, `codex-cli`, `claude-code`, `cursor-agent`, or `opencode-cli`. If it is unset, Vibe-Gate checks for local CLI executables in the documented order.
 4. For `opencode-cli`, set `CRITIC_MODEL` to an available `provider/model` value from `opencode models`.
 5. Verify `.env` is loaded (MCP config must pass `env` or the process must inherit it).
 
 ### Local CLI not found or not authenticated
 
-**Cause:** IDE-launched MCP servers may have a shorter `PATH` than an interactive terminal, or the CLI may not have an account session for this OS user.
+**Cause:** IDE-launched MCP servers may have a shorter `PATH` than an interactive terminal, or the CLI may not have an account session for this OS user. On Windows, the CLI shim may be a `.cmd` or `.bat` file listed in `PATHEXT`.
 
-**Fix:** Run the CLI's login flow in a terminal as the same user running the IDE, then set its matching `*_CLI_PATH` to the absolute executable path if needed. For Claude Code, `claude auth login` defaults to Claude subscription sign-in; `--console` selects API billing. See [CLI_PROVIDERS.md](CLI_PROVIDERS.md) for provider-specific setup.
+**Fix:** Run the CLI's login flow in a terminal as the same user running the IDE, then set its matching `*_CLI_PATH` to the absolute executable path if needed. For Cursor, `cursor-agent` remains the `CRITIC_PROVIDER` value, while the current executable is `agent`; `cursor-agent` is only a legacy fallback. For Claude Code, `claude auth login` defaults to Claude subscription sign-in; `--console` selects API billing. See [CLI_PROVIDERS.md](CLI_PROVIDERS.md) for provider-specific setup.
 
 ### OpenCode CLI reports insufficient balance
 
