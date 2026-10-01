@@ -172,6 +172,73 @@ describe('readOnly workspace inventory', () => {
 })
 
 describe('carrier and additional source bounds', () => {
+  it.each(['inline', 'raw', 'json'])(
+    '%s rejects malformed full-source claims before Critic invocation',
+    async carrier => {
+      const malformedCorpora = [
+        'FILE: src/a.ts\nCONTENT:\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+        'FILE: src/a.ts\nCONTENT:\n@@ -1 +1 @@\n-old\n+new\n',
+        'FILE: src/a.ts\nCONTENT:\n',
+        'FILE: src/a.ts\nCONTENT:\n \t\r\n',
+        'FILE: src/a.ts\nsummary before marker\nCONTENT:\nexport const value = 1\n',
+        'FILE: src/a.ts\nCONTENT:\n[FULL FILE CONTENT]\n',
+        'summary before blocks\nFILE: src/a.ts\nCONTENT:\nexport const value = 1\n'
+      ]
+      await seedState()
+      for (const corpus of malformedCorpora) {
+        await writeFile(
+          join(workspace, 'corpus.txt'),
+          carrier === 'json' ? JSON.stringify({ semanticDiff: corpus }) : corpus
+        )
+        const before = await inventory(workspace)
+        const args = carrier === 'inline' ? { semanticDiff: corpus } : { semanticDiffPath: 'corpus.txt' }
+        const result = resultPayload(await handleSubmitPhaseReview({ ...input, ...args, readOnly: true }))
+        expect(result.error).toBeDefined()
+        expect(complete).not.toHaveBeenCalled()
+        expect(await inventory(workspace)).toEqual(before)
+      }
+    }
+  )
+
+  it.each(['', ' \t\r\n', '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n'])(
+    'rejects files and REQUEST context with empty or patch bodies: %s',
+    async body => {
+      await writeFile(join(workspace, 'src/file20.ts'), body)
+      await seedState(1, 'REQUEST: src/file20.ts')
+      const before = await inventory(workspace)
+      for (const args of [{ files: ['src/file20.ts'] }, { semanticDiff: payload(9), round: 2 }]) {
+        const result = resultPayload(await handleSubmitPhaseReview({ ...input, ...args, readOnly: true }))
+        expect(result.error).toBeDefined()
+        expect(complete).not.toHaveBeenCalled()
+        expect(await inventory(workspace)).toEqual(before)
+      }
+    }
+  )
+
+  it.each(['files', 'inline', 'raw', 'json'])(
+    '%s preserves complete source bytes and quoted patch markers',
+    async carrier => {
+      const source = `const patch = \`\r\n--- a/a.ts\r\n+++ b/a.ts\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n\`;\r\n${'// source line\n'.repeat(600)}// FULL_TAIL`
+      const corpus = `FILE: src/file0.ts\nCONTENT:\n${source}`
+      await writeFile(join(workspace, 'src/file0.ts'), source)
+      await writeFile(
+        join(workspace, 'corpus.txt'),
+        carrier === 'json' ? JSON.stringify({ semanticDiff: corpus }) : corpus
+      )
+      let args: { files?: string[]; semanticDiff?: string; semanticDiffPath?: string }
+      if (carrier === 'files') args = { files: ['src/file0.ts'] }
+      else if (carrier === 'inline') args = { semanticDiff: corpus }
+      else args = { semanticDiffPath: 'corpus.txt' }
+      const before = await inventory(workspace)
+      const result = resultPayload(await handleSubmitPhaseReview({ ...input, ...args, readOnly: true }))
+      expect(result.verdict).toBe('ACCEPT')
+      expect(result.filesAnalyzed).toBe(1)
+      expect(complete).toHaveBeenCalledTimes(1)
+      expect(complete.mock.calls[0][0][1].content).toContain(corpus)
+      expect(await inventory(workspace)).toEqual(before)
+    }
+  )
+
   it.each(['files', 'inline', 'raw', 'json'])(
     '%s carrier transmits 1/10 complete sources and rejects 11/21 before invocation',
     async carrier => {

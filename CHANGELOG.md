@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-10-01
+
+### Fixed
+
+- Require correctly framed FILE/CONTENT source blocks and reject empty bodies, recognizable unified patches and explicit full-source placeholders before Critic invocation.
+
 ## [0.1.9] - 2026-10-01
 
 ### Fixed

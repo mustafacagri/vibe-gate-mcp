@@ -1,12 +1,12 @@
 # Semantic diff payload sources
 
-`submit_phase_review` always reviews a **FILE:…CONTENT:** corpus (full file bodies, not git diff). Agents choose **exactly one** payload source:
+For normal agent reviews, pass changed source paths in `submit_phase_review.files[]`. MCP reads each complete file and serializes **FILE:…CONTENT:** internally for the Critic. Agents supply paths and a completion report; no pasted file bodies or generated corpus is required. Exactly one input carrier is accepted:
 
 | Priority          | Field              | When to use                                                                             |
 | ----------------- | ------------------ | --------------------------------------------------------------------------------------- |
 | **1 (preferred)** | `files: string[]`  | Normal batches. Workspace-relative source paths; MCP reads disk and builds the payload. |
-| 2                 | `semanticDiffPath` | Pre-built payload file already on disk (CI artifacts, offline dumps).                   |
-| 3                 | `semanticDiff`     | Tiny one-file smoke payloads.                                                           |
+| 2                 | `semanticDiffPath` | Existing compatibility carrier for a pre-built corpus on disk.                          |
+| 3                 | `semanticDiff`     | Existing compatibility carrier for an inline corpus.                                    |
 
 ## Why `files[]` is best practice
 
@@ -33,17 +33,22 @@ Paths must be **relative to `VIBE_WORKSPACE_ROOT`**. Absolute paths and `..` tra
   "phaseId": "phase-6-§1a",
   "report": "…",
   "files": ["features/compliance/constants.ts", "packages/compliance/src/export-zip.ts"],
+  "readOnly": true,
   "round": 1
 }
 ```
 
-## `semanticDiffPath` (optional)
+Callers positively classify the selected paths as source and bind them to a fixed candidate. MCP supplies the full bodies from disk. For deletes and old rename endpoints, an orchestrator such as Vibe-Pilot materializes the pinned Git base blobs into real snapshot paths under the workspace, then passes those paths in `files[]`. Both rename endpoints count even when their source bytes match. MCP does not read Git history itself.
 
-Write the same FILE:…CONTENT: string to a UTF-8 file under the workspace (raw text or JSON `{"semanticDiff":"..."}`), then pass the relative path. Size ≤ 5 MiB (`SEMANTIC_DIFF_FILE.MAX_BYTES`).
+## Compatibility carriers
 
-## Inline `semanticDiff`
+### `semanticDiffPath`
 
-Same FILE:…CONTENT: string as the tool argument. Prefer `files[]`.
+An existing UTF-8 payload file under the workspace may contain raw FILE:…CONTENT: text or JSON `{"semanticDiff":"..."}`. Pass its relative path. Size ≤ 5 MiB (`SEMANTIC_DIFF_FILE.MAX_BYTES`). Normal agent calls use `files[]`.
+
+### Inline `semanticDiff`
+
+Existing callers may pass the same FILE:…CONTENT: string as the tool argument. Normal agent calls use `files[]`.
 
 ## Critic-requested context
 
@@ -67,6 +72,8 @@ CONTENT:
 
 Markers are SSoT: `SEMANTIC_DIFF_PAYLOAD_MARKERS` in `src/constants.ts`.
 
+Compatibility corpora require a `FILE: path` line immediately followed by a `CONTENT:` line and a non-empty source body. LF and CRLF framing are accepted. Empty bodies, misplaced markers, recognizable patch/hunk payloads and explicit full-source placeholders fail before Critic invocation. Unindented `FILE:` lines are reserved framing markers. Validation preserves submitted source bytes and does not prove that arbitrary inline text is complete; that guarantee remains tied to the caller's fixed source identity.
+
 ## Soft advisory
 
 If any FILE block exceeds `SEMANTIC_DIFF_FILE.SOFT_WARN_LINES_PER_FILE_BLOCK` (default 500), responses may include `semanticDiffHints` (non-blocking).
@@ -88,4 +95,4 @@ See `examples/cursor-mcp.project.json` and [INSTALLATION.md](INSTALLATION.md).
 
 Set `readOnly: true` on `submit_phase_review` for a check that must leave the workspace untouched. It overrides `updateStatus: true` and prevents session clearing/saving, status updates, debt appends, conflict counter updates and deadlock case writes. Verdicts and concern verification still follow the ordinary review rules; deadlock case data is returned without saving it. Existing matching sessions can be read on later rounds, but read-only calls do not save a new round. `logToDebt` still expresses acceptance of debt when required, without writing the log. The default is `false`. `updateStatus: false` alone only disables phase status updates.
 
-Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers must positively classify their selected source endpoints and supply full source bodies rather than patches or summaries.
+Every carrier (`files[]`, inline `semanticDiff`, raw/JSON `semanticDiffPath`) is limited to **ten actual FILE/CONTENT source blocks**, including additional `REQUEST:` context on later rounds. Duplicate blocks and both rename endpoints count separately, even if their paths or bytes match. An oversized corpus fails before the enlarged Critic request; it is never reduced to the first ten blocks. Requested line ranges are read as complete files, subject to the existing file and aggregate size limits. Markdown, JSON and other document/data endpoints are rejected as source context. Callers positively classify selected endpoints; MCP reads full source bodies when given `files[]`. Compatibility callers must provide complete source bodies rather than patches or summaries.
