@@ -1,7 +1,7 @@
 {
   "name": "vibe-gate-mcp",
   "mcpName": "io.github.mustafacagri/vibe-gate-mcp",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "type": "module",
   "description": "Adversarial Quality Gate MCP for vibe-coding: IDE AI vs Critic AI, human decides on deadlock",
   "license": "MIT",

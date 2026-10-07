@@ -1,3 +1,10 @@
+## [0.1.12](https://github.com/mustafacagri/vibe-gate-mcp/compare/v0.1.11...v0.1.12) (2026-10-07)
+
+
+### Bug Fixes
+
+* **package:** declare mcpName so the MCP Registry can verify the package ([64ff537](https://github.com/mustafacagri/vibe-gate-mcp/commit/64ff53709abc7d2559c6c2c81c90badf92d3e9fb))
+
 ## [0.1.11](https://github.com/mustafacagri/vibe-gate-mcp/compare/v0.1.10...v0.1.11) (2026-10-07)
 
 

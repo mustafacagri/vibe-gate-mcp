@@ -6,12 +6,12 @@
     "url": "https://github.com/mustafacagri/vibe-gate-mcp",
     "source": "github"
   },
-  "version": "0.1.11",
+  "version": "0.1.12",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "vibe-gate-mcp",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
