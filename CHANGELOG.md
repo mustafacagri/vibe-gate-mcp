@@ -1,3 +1,10 @@
+## [0.1.11](https://github.com/mustafacagri/vibe-gate-mcp/compare/v0.1.10...v0.1.11) (2026-10-07)
+
+
+### Bug Fixes
+
+* automate npm publishing from main ([ab4676d](https://github.com/mustafacagri/vibe-gate-mcp/commit/ab4676da56668658d99f28a4eb751dc8cf261b80))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
