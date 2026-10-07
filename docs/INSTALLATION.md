@@ -101,13 +101,17 @@ Never hardcode one consumer absolute path as `VIBE_WORKSPACE_ROOT`.
 
 ## Publish checklist
 
+Publishing happens in CI on every push to `main` (`.github/workflows/publish.yml`): quality check, version and
+changelog from the conventional commits, `npm publish` with provenance, then the MCP Registry entry
+(`server.json`). Before pushing:
+
 ```bash
-npm run prepublishOnly
+yarn quality
 npm pack --dry-run
-npm publish
 ```
 
-Package name on npm: **`vibe-gate-mcp`** (`bin`: `vibe-gate-mcp` → `dist/index.mjs`).
+Package name on npm: **`vibe-gate-mcp`** (`bin`: `vibe-gate-mcp` → `dist/index.mjs`). Registry name:
+**`io.github.mustafacagri/vibe-gate-mcp`**.
 
 ## References
 

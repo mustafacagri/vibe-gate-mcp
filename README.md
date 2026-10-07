@@ -102,9 +102,16 @@ After `npm run build`, **restart** the vibe-gate MCP server in the IDE.
 
 ## Publish
 
+Releases are automatic. Every push to `main` runs `.github/workflows/publish.yml`: it runs `yarn quality`, lets
+semantic-release choose the version from the conventional commits (`fix:` is a patch, `feat:` a minor), publishes
+`vibe-gate-mcp` to npm with provenance, and lists that version in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.mustafacagri/vibe-gate-mcp`. No token is
+stored: npm and the registry both trust the workflow through GitHub OIDC. `server.json` is the registry entry and
+is kept at the release version by `scripts/sync-server-json.mjs`.
+
 ```bash
+yarn quality          # what the workflow checks before it tags anything
 npm pack --dry-run    # inspect the exact tarball contents
-npm publish           # package name: vibe-gate-mcp
 ```
 
 Consumers then use `npx -y vibe-gate-mcp` as above.
