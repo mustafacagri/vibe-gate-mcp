@@ -1,0 +1,124 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mustafacagri/vibe-gate-mcp",
+  "description": "Adversarial Quality Gate MCP for vibe-coding: IDE AI vs Critic AI, human decides on deadlock",
+  "repository": {
+    "url": "https://github.com/mustafacagri/vibe-gate-mcp",
+    "source": "github"
+  },
+  "version": "0.1.11",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "vibe-gate-mcp",
+      "version": "0.1.11",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "VIBE_WORKSPACE_ROOT",
+          "description": "Consumer project root (auto-detected from the working directory if omitted)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CRITIC_PROVIDER",
+          "description": "Critic provider: openai, anthropic, google, minimax, opencode, codex-cli, claude-code, cursor-agent or opencode-cli (a signed-in local CLI is auto-detected if omitted)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CRITIC_MODEL",
+          "description": "Model id override; required for opencode-cli as provider/model",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CRITIC_PERSONA",
+          "description": "Critic persona: security-first, performance-freak or clean-code-monk",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "OpenAI API key (CRITIC_PROVIDER=openai)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Anthropic API key (CRITIC_PROVIDER=anthropic)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GOOGLE_GENERATIVE_AI_API_KEY",
+          "description": "Google Gemini API key (CRITIC_PROVIDER=google)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "MINIMAX_API_KEY",
+          "description": "MiniMax API key (CRITIC_PROVIDER=minimax)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "OPENCODE_API_KEY",
+          "description": "OpenCode API key (CRITIC_PROVIDER=opencode)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "OPENCODE_PLAN",
+          "description": "OpenCode plan: go (subscription) or zen (pay-as-you-go)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CODEX_CLI_PATH",
+          "description": "Path to the codex executable (CRITIC_PROVIDER=codex-cli)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CLAUDE_CODE_CLI_PATH",
+          "description": "Path to the claude executable (CRITIC_PROVIDER=claude-code)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CURSOR_AGENT_CLI_PATH",
+          "description": "Path to the agent executable (CRITIC_PROVIDER=cursor-agent)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "OPENCODE_CLI_PATH",
+          "description": "Path to the opencode executable (CRITIC_PROVIDER=opencode-cli)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CRITIC_CLI_TIMEOUT_MS",
+          "description": "Local CLI timeout in milliseconds, from 1000 to 600000",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "DEBUG",
+          "description": "Log parse and read failures to stderr",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
