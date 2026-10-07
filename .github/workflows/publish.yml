@@ -1,0 +1,77 @@
+name: Modern Trusted Publish
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # Explicit registry so the unscoped package name always targets npmjs.
+      NPM_REGISTRY: https://registry.npmjs.org
+    permissions:
+      contents: write
+      id-token: write
+      issues: write
+      packages: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node.js for npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install & Build
+        run: |
+          yarn install --immutable
+          yarn build
+
+      # semantic-release versions from the latest v* tag, not package.json.
+      # 0.1.6–0.1.10 were published without tags; refuse to run until the tag catches up.
+      - name: Require release tag at package version
+        run: node scripts/assert-release-tag.mjs
+
+      - name: Run semantic-release
+        run: yarn semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync repository state
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      # semantic-release exits 0 when there is nothing to release; package.json then matches an
+      # already-published version — skip publish to avoid E422 / "cannot publish over".
+      # Provenance requires a public source repo; private sources must disable it.
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "$NAME" version --registry "$NPM_REGISTRY" 2>/dev/null || true)
+          if [ -n "$PUBLISHED" ] && [ "$PUBLISHED" = "$VERSION" ]; then
+            echo "Skipping npm publish: v${VERSION} is already on ${NPM_REGISTRY}."
+            exit 0
+          fi
+          if [ "${{ github.event.repository.private }}" = "true" ]; then
+            NPM_CONFIG_PROVENANCE=false npm publish --access public --registry "$NPM_REGISTRY"
+          else
+            npm publish --provenance --access public --registry "$NPM_REGISTRY"
+          fi
